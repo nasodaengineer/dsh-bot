@@ -8,6 +8,7 @@
  */
 import type { BotRoster } from './roster.js'
 import type { BotSchedulesRuntime } from './schedules.js'
+import type { MemoryRepo } from './memory.js'
 import type { HostContext, ScheduleCreateRequest, ToolsService } from './types.js'
 
 /** MCP server 名文法（预留 P2，先在这里冻结） */
@@ -67,6 +68,10 @@ export interface BotToolsDeps {
   readonly roster: BotRoster
   /** 例程运行时可能晚于工具注册（schedule 是条件挂载），用取值函数解耦 */
   readonly getSchedules: () => BotSchedulesRuntime | undefined
+  /** 记忆仓库（票 #10，异步就绪，用取值函数解耦） */
+  readonly getMemory: () => MemoryRepo | undefined
+  /** 当前选中 Bot（记忆按 Bot 隔离） */
+  readonly getSelectedBotId: () => string | undefined
 }
 
 /** execute 统一包装：工具永不抛错 */
@@ -156,6 +161,109 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
         const schedules = deps.getSchedules()
         if (schedules === undefined) return { error: 'dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）' }
         return { schedules: await schedules.list() }
+      }),
+  })
+
+  // ---- 票 #10：bot_memory_* 六件 ----
+  const getMemory = (): MemoryRepo | undefined => {
+    const repo = deps.getMemory()
+    if (repo === undefined) warn('记忆仓库未就绪')
+    return repo
+  }
+  const requireSelectedBot = (): string | undefined => {
+    const id = deps.getSelectedBotId()
+    if (id === undefined) warn('未选中 Bot，记忆工具需要先选定 Bot')
+    return id
+  }
+
+  register({
+    name: 'bot_memory_write',
+    description: '为当前 Bot 写入一条长期记忆（主题 + 文本；单条有体积上限，超限请先摘要）',
+    parameters: { type: 'object', properties: { topic: { type: 'string' }, text: { type: 'string' } }, required: ['topic', 'text'] },
+    execute: (args) =>
+      safeExecute(async () => {
+        const repo = getMemory()
+        const botId = requireSelectedBot()
+        if (repo === undefined || botId === undefined) return { error: 'dsh-bot: 记忆仓库未就绪或未选中 Bot' }
+        const a = args as { topic?: string; text?: string }
+        if (typeof a.topic !== 'string' || typeof a.text !== 'string') return { error: 'dsh-bot: topic 与 text 必填' }
+        return { entry: await repo.write(botId, { topic: a.topic, text: a.text }) }
+      }),
+  })
+
+  register({
+    name: 'bot_memory_read',
+    description: '读取当前 Bot 某个主题下的全部记忆条目',
+    parameters: { type: 'object', properties: { topic: { type: 'string' } }, required: ['topic'] },
+    execute: (args) =>
+      safeExecute(async () => {
+        const repo = getMemory()
+        const botId = requireSelectedBot()
+        if (repo === undefined || botId === undefined) return { error: 'dsh-bot: 记忆仓库未就绪或未选中 Bot' }
+        const topic = (args as { topic?: string }).topic
+        if (typeof topic !== 'string') return { error: 'dsh-bot: topic 必填' }
+        return { entries: await repo.read(botId, topic) }
+      }),
+  })
+
+  register({
+    name: 'bot_memory_search',
+    description: '按关键词检索当前 Bot 的长期记忆（关键词全命中才返回）',
+    parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+    execute: (args) =>
+      safeExecute(async () => {
+        const repo = getMemory()
+        const botId = requireSelectedBot()
+        if (repo === undefined || botId === undefined) return { error: 'dsh-bot: 记忆仓库未就绪或未选中 Bot' }
+        const query = (args as { query?: string }).query
+        if (typeof query !== 'string') return { error: 'dsh-bot: query 必填' }
+        return { entries: await repo.search(botId, query) }
+      }),
+  })
+
+  register({
+    name: 'bot_memory_list',
+    description: '列出当前 Bot 的全部记忆条目（按主题排序）',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    execute: () =>
+      safeExecute(async () => {
+        const repo = getMemory()
+        const botId = requireSelectedBot()
+        if (repo === undefined || botId === undefined) return { error: 'dsh-bot: 记忆仓库未就绪或未选中 Bot' }
+        return { entries: await repo.list(botId) }
+      }),
+  })
+
+  register({
+    name: 'bot_memory_forget',
+    description: '删除当前 Bot 的一条记忆（按 topic + 条目 id）',
+    parameters: {
+      type: 'object',
+      properties: { topic: { type: 'string' }, id: { type: 'string' } },
+      required: ['topic', 'id'],
+    },
+    execute: (args) =>
+      safeExecute(async () => {
+        const repo = getMemory()
+        const botId = requireSelectedBot()
+        if (repo === undefined || botId === undefined) return { error: 'dsh-bot: 记忆仓库未就绪或未选中 Bot' }
+        const a = args as { topic?: string; id?: string }
+        if (typeof a.topic !== 'string' || typeof a.id !== 'string') return { error: 'dsh-bot: topic 与 id 必填' }
+        return { deleted: await repo.forget(botId, a.topic, a.id) }
+      }),
+  })
+
+  register({
+    name: 'bot_memory_journal',
+    description: '查看当前 Bot 的记忆变更流水（write/forget），最新的在前',
+    parameters: { type: 'object', properties: { limit: { type: 'number' } } },
+    execute: (args) =>
+      safeExecute(async () => {
+        const repo = getMemory()
+        const botId = requireSelectedBot()
+        if (repo === undefined || botId === undefined) return { error: 'dsh-bot: 记忆仓库未就绪或未选中 Bot' }
+        const limit = (args as { limit?: number }).limit
+        return { journal: await repo.journal(botId, typeof limit === 'number' ? limit : undefined) }
       }),
   })
 

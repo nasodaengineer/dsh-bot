@@ -27,6 +27,7 @@ import { createAgentTeamsFacade, type AgentTeamsFacade, type AgentTeamsService }
 import { createTaskBoard, type TaskBoard } from './taskboard.js'
 import { createJevJudge, type JevJudge } from './jev.js'
 import { createGroupChatRuntime, type GroupChatRuntime } from './groupchat.js'
+import { createMemoryRepo, type MemoryRepo } from './memory.js'
 
 export const name = 'dsh-bot'
 
@@ -57,6 +58,8 @@ export interface DshBotRuntime {
   readonly teams?: AgentTeamsFacade
   readonly tasks?: TaskBoard
   readonly groups?: GroupChatRuntime
+  /** P3：Bot 记忆仓库（票 #10，异步就绪） */
+  readonly memory?: MemoryRepo
   readonly mcp: McpBridge
 }
 
@@ -78,6 +81,7 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     teams?: AgentTeamsFacade
     tasks?: TaskBoard
     groups?: GroupChatRuntime
+    memory?: MemoryRepo
   } = {}
   let storeRef: IdentityStore | undefined
 
@@ -108,6 +112,8 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     runtime.roster = roster
     storeRef = store
     runtime.selectedId = await store.getSelectedId()
+    // 票 #10：记忆仓库与身份共用 KV unit 'dsh-bot'（自有表），失败内部降级
+    runtime.memory = await createMemoryRepo(ctx)
 
     if (ctx.systemPrompt !== undefined) {
       ctx.systemPrompt.section(personaSection(store, { selectedId: () => runtime.selectedId }))
@@ -133,6 +139,7 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     get teams() { return runtime.teams },
     get tasks() { return runtime.tasks },
     get groups() { return runtime.groups },
+    get memory() { return runtime.memory },
     mcp,
     selection: {
       async selectBot(id) {
@@ -171,7 +178,12 @@ function attachP1Runtimes(
   ctx.inject(['tools'], (services) => {
     const roster = runtime.roster as BotRoster | undefined
     if (roster === undefined) return
-    runtime.botTools = attachBotTools(ctx, services.tools as ToolsService, { roster, getSchedules })
+    runtime.botTools = attachBotTools(ctx, services.tools as ToolsService, {
+      roster,
+      getSchedules,
+      getMemory: () => runtime.memory as MemoryRepo | undefined,
+      getSelectedBotId: () => runtime.selectedId as string | undefined,
+    })
   })
 
   ctx.inject(['credentials'], (services) => {

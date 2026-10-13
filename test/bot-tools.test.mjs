@@ -7,15 +7,26 @@ import { assertMcpServerName, createMcpBridge, isValidMcpServerName, mcpToolName
 
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
-test('bot_* 工具注册：四个工具名、可注销', async () => {
+test('bot_* 工具注册：十个工具名、可注销', async () => {
   const ctx = fakeContext()
   const runtime = apply(ctx, { rootSessionId: 'root-1' })
   await flush()
   assert.ok(runtime.botTools, 'botTools 应已挂载')
-  assert.deepEqual([...runtime.botTools.names].sort(), ['bot_roster_list', 'bot_schedule_create', 'bot_schedule_delete', 'bot_schedule_list'])
+  assert.deepEqual([...runtime.botTools.names].sort(), [
+    'bot_memory_forget',
+    'bot_memory_journal',
+    'bot_memory_list',
+    'bot_memory_read',
+    'bot_memory_search',
+    'bot_memory_write',
+    'bot_roster_list',
+    'bot_schedule_create',
+    'bot_schedule_delete',
+    'bot_schedule_list',
+  ])
   runtime.botTools.dispose()
   assert.deepEqual([...runtime.botTools.names], [])
-  assert.ok(ctx.calls.filter((c) => c.startsWith('tool dispose ')).length === 4)
+  assert.ok(ctx.calls.filter((c) => c.startsWith('tool dispose ')).length === 10)
 })
 
 test('bot_schedule_create：六形态之一（cron）转 schedule.create（root Session）', async () => {
