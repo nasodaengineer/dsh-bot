@@ -34,6 +34,8 @@ interface LoggerService {
 
 interface ReactLike {
   createElement: (...args: unknown[]) => unknown
+  useState?: <S>(initial: S) => [S, (value: S) => void]
+  useEffect?: (effect: () => void | (() => void), deps?: readonly unknown[]) => void
 }
 
 export interface ClientContext {
@@ -76,11 +78,30 @@ interface ConversationViewRow {
   inject: (sessionId: string) => unknown
 }
 
-/** P3 接缝：数据通道接线后替换本函数（当前返回本地骨架） */
-export function createGroupLoader(_ctx: ClientContext): {
-  groups: Array<{ id: string; name: string; members: number }>
-} {
-  return { groups: [] }
+export interface GroupLoader {
+  /** 票 #12 接线：走 POST /api/dsh-bot {endpoint:'group.list'}（会话 cookie 由浏览器自动带） */
+  load(): Promise<Array<{ id: string; name: string; members: number }>>
+}
+
+/** 票 #12：数据通道接线——失败/未登录时降级空列表，面板不挂 */
+export function createGroupLoader(_ctx: ClientContext): GroupLoader {
+  return {
+    async load() {
+      try {
+        const res = await fetch('/api/dsh-bot', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ endpoint: 'group.list' }),
+        })
+        if (!res.ok) return []
+        const body = (await res.json()) as { ok?: boolean; result?: { groups?: Array<{ id: string; name: string; memberIds?: readonly string[] }> } }
+        if (body?.ok !== true) return []
+        return (body.result?.groups ?? []).map((g) => ({ id: g.id, name: g.name, members: g.memberIds?.length ?? 0 }))
+      } catch {
+        return []
+      }
+    },
+  }
 }
 
 export function apply(ctx: ClientContext): void {
@@ -113,8 +134,15 @@ function createGroupPanelComponent(t: (key: string) => string) {
   return function GroupPanel(props: Record<string, unknown>, require?: (name: string) => unknown) {
     const react = (require ?? globalThisRequire)('react') as ReactLike
     const h = react.createElement
-    const loader = (props as { loader?: { groups: Array<{ id: string; name: string; members: number }> } }).loader
-    const groups = loader?.groups ?? []
+    const loader = (props as { loader?: { load?: () => Promise<Array<{ id: string; name: string; members: number }>> } }).loader
+    const state = react.useState?.([] as Array<{ id: string; name: string; members: number }>) ?? [[], () => {}] as unknown as [Array<{ id: string; name: string; members: number }>, (value: Array<{ id: string; name: string; members: number }>) => void]
+    const groups = state[0]
+    react.useEffect?.(() => {
+      let active = true
+      loader?.load?.().then((loaded) => { if (active && loaded.length > 0) state[1](loaded) }).catch(() => {})
+      return () => { active = false }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
     return h('div', { className: 'dsh-bot-group-panel' },
       h('h3', null, t('groups.title')),
       groups.length === 0

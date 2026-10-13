@@ -29,6 +29,7 @@ import { createJevJudge, type JevJudge } from './jev.js'
 import { createGroupChatRuntime, type GroupChatRuntime } from './groupchat.js'
 import { createMemoryRepo, type MemoryRepo } from './memory.js'
 import { createTemplateStore, type TemplateStore } from './template.js'
+import { attachHttpEndpoint, type HttpEndpointRuntime } from './endpoint.js'
 
 export const name = 'dsh-bot'
 
@@ -63,6 +64,8 @@ export interface DshBotRuntime {
   readonly memory?: MemoryRepo
   /** P3：Bot 模板仓库（票 #11，异步就绪） */
   readonly templates?: TemplateStore
+  /** P3：HTTP 端点（票 #12，connection 服务存在时挂载） */
+  readonly endpoint?: HttpEndpointRuntime
   readonly mcp: McpBridge
 }
 
@@ -86,6 +89,7 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     groups?: GroupChatRuntime
     memory?: MemoryRepo
     templates?: TemplateStore
+    endpoint?: HttpEndpointRuntime
   } = {}
   let storeRef: IdentityStore | undefined
 
@@ -126,6 +130,13 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
       getMcpServerNames: () => mcp.configured.map((c) => c.name),
     })
 
+    // 票 #12：HTTP 端点（connection 服务缺失时内部降级不注册）
+    runtime.endpoint = attachHttpEndpoint(ctx, {
+      getGroups: () => runtime.groups,
+      getTasks: () => runtime.tasks,
+      getRoster: () => runtime.roster,
+    })
+
     if (ctx.systemPrompt !== undefined) {
       ctx.systemPrompt.section(personaSection(store, { selectedId: () => runtime.selectedId }))
     } else {
@@ -152,6 +163,7 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     get groups() { return runtime.groups },
     get memory() { return runtime.memory },
     get templates() { return runtime.templates },
+    get endpoint() { return runtime.endpoint },
     mcp,
     selection: {
       async selectBot(id) {
