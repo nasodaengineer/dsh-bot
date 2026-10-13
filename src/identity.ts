@@ -11,6 +11,7 @@ import type { BotIdentity, HostContext, KvUnit, StorageBackendRegistry } from '.
 const BACKEND_NAME = 'json'
 const UNIT_NAME = 'dsh-bot'
 const TABLE_NAME = 'bots'
+const SELECTION_TABLE = 'selection'
 const UNIT_VERSION = 1
 
 export interface IdentityStore {
@@ -20,6 +21,12 @@ export interface IdentityStore {
   /** 同步读缓存：systemPrompt 的 section provider 是同步求值的，人格段用它 */
   listSync(): BotIdentity[]
   remove(id: string): Promise<void>
+  /** 当前选中 Bot（票 #6：从 P0 的进程内变量升级为 KV 持久化） */
+  putSelectedId(id: string | undefined): Promise<void>
+  getSelectedId(): Promise<string | undefined>
+  /** Bot 级默认模型选择（随 Bot 持久，key = `model:<botId>` 或全局 `model`） */
+  putMeta(key: string, value: unknown): Promise<void>
+  getMeta(key: string): Promise<unknown>
 }
 
 /** 解析 KV unit；失败返回 undefined 并 warn 一次。 */
@@ -33,7 +40,7 @@ async function openUnit(backend: StorageBackendRegistry | undefined): Promise<Kv
   }
   const kv = (medium as { kv?: { open(d: unknown): Promise<KvUnit> } } | undefined)?.kv
   if (kv === undefined) return undefined
-  return kv.open({ name: UNIT_NAME, version: UNIT_VERSION, tables: [TABLE_NAME], hasGlobal: false })
+  return kv.open({ name: UNIT_NAME, version: UNIT_VERSION, tables: [TABLE_NAME, SELECTION_TABLE], hasGlobal: false })
 }
 
 export async function createIdentityStore(ctx: HostContext): Promise<IdentityStore> {
@@ -48,6 +55,7 @@ export async function createIdentityStore(ctx: HostContext): Promise<IdentitySto
 
   // 降级路径：进程内 Map。ctx.storage 缺失时静默降级即可，warn 一次。
   const memory = new Map<string, BotIdentity>()
+  const selectionMemory = new Map<string, unknown>()
   let degraded = false
   if (unit === undefined) {
     degraded = true
@@ -60,6 +68,10 @@ export async function createIdentityStore(ctx: HostContext): Promise<IdentitySto
     const records = snapshot.tables[TABLE_NAME] ?? {}
     for (const [key, value] of Object.entries(records)) {
       memory.set(key, value as BotIdentity)
+    }
+    const selectionRecords = snapshot.tables[SELECTION_TABLE] ?? {}
+    for (const [key, value] of Object.entries(selectionRecords)) {
+      selectionMemory.set(key, value)
     }
   }
 
@@ -80,6 +92,25 @@ export async function createIdentityStore(ctx: HostContext): Promise<IdentitySto
     async remove(id) {
       memory.delete(id)
       if (!degraded) await unit!.deleteRecord(TABLE_NAME, id)
+    },
+    async putSelectedId(id) {
+      if (id === undefined) {
+        selectionMemory.delete('selectedId')
+        if (!degraded) await unit!.deleteRecord(SELECTION_TABLE, 'selectedId')
+        return
+      }
+      selectionMemory.set('selectedId', id)
+      if (!degraded) await unit!.putRecord(SELECTION_TABLE, 'selectedId', id)
+    },
+    async getSelectedId() {
+      return selectionMemory.get('selectedId') as string | undefined
+    },
+    async putMeta(key, value) {
+      selectionMemory.set(key, value)
+      if (!degraded) await unit!.putRecord(SELECTION_TABLE, key, value)
+    },
+    async getMeta(key) {
+      return selectionMemory.get(key)
     },
   }
 }
