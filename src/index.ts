@@ -23,10 +23,21 @@ import { attachBotTools, createMcpBridge, type BotToolsRuntime, type McpBridge, 
 import { attachBotCredentials, type BotCredentialsRuntime } from './bot-credentials.js'
 import { attachBotApproval, type BotApprovalRuntime } from './bot-approval.js'
 import { attachBotSchedules, type BotSchedulesRuntime } from './schedules.js'
+import { createAgentTeamsFacade, type AgentTeamsFacade, type AgentTeamsService } from './agent-teams.js'
+import { createTaskBoard, type TaskBoard } from './taskboard.js'
+import { createJevJudge, type JevJudge } from './jev.js'
+import { createGroupChatRuntime, type GroupChatRuntime } from './groupchat.js'
 
 export const name = 'dsh-bot'
 
 export const inject = ['agentPresets', 'systemPrompt', 'storage']
+
+/** Jev 决策模型配置：judge 直接注入（测试/自建），或给 apiKey 走 TypeSafe HTTP API */
+export interface TypesafeOptions {
+  readonly apiKey?: string
+  readonly endpoint?: string
+  readonly judge?: JevJudge
+}
 
 export interface DshBotRuntime {
   readonly roster: BotRoster
@@ -42,10 +53,20 @@ export interface DshBotRuntime {
   readonly credentials?: BotCredentialsRuntime
   readonly approval?: BotApprovalRuntime
   readonly schedules?: BotSchedulesRuntime
+  /** P2：原生 TeamService 门面（caller 透传）+ 任务板 + 群聊 */
+  readonly teams?: AgentTeamsFacade
+  readonly tasks?: TaskBoard
+  readonly groups?: GroupChatRuntime
   readonly mcp: McpBridge
 }
 
-export function apply(ctx: HostContext, options: { mcpServers?: readonly McpServerConfig[]; rootSessionId?: string } = {}): DshBotRuntime {
+export interface ApplyOptions {
+  mcpServers?: readonly McpServerConfig[]
+  rootSessionId?: string
+  typesafe?: TypesafeOptions
+}
+
+export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRuntime {
   const runtime: {
     roster?: BotRoster
     selectedId?: string
@@ -54,6 +75,9 @@ export function apply(ctx: HostContext, options: { mcpServers?: readonly McpServ
     credentials?: BotCredentialsRuntime
     approval?: BotApprovalRuntime
     schedules?: BotSchedulesRuntime
+    teams?: AgentTeamsFacade
+    tasks?: TaskBoard
+    groups?: GroupChatRuntime
   } = {}
   let storeRef: IdentityStore | undefined
 
@@ -106,6 +130,9 @@ export function apply(ctx: HostContext, options: { mcpServers?: readonly McpServ
     get credentials() { return runtime.credentials },
     get approval() { return runtime.approval },
     get schedules() { return runtime.schedules },
+    get teams() { return runtime.teams },
+    get tasks() { return runtime.tasks },
+    get groups() { return runtime.groups },
     mcp,
     selection: {
       async selectBot(id) {
@@ -125,12 +152,12 @@ export function apply(ctx: HostContext, options: { mcpServers?: readonly McpServ
   } as DshBotRuntime
 }
 
-/** P1 运行时装配：五个 ctx.inject 订阅（见文件头注释的取舍理由） */
+/** P1/P2 运行时装配：ctx.inject 订阅（见文件头注释的取舍理由） */
 function attachP1Runtimes(
   ctx: HostContext,
   runtime: Record<string, unknown>,
   store: IdentityStore,
-  options: { rootSessionId?: string },
+  options: ApplyOptions,
 ): void {
   ctx.inject(['llm', 'sessionController'], (services) => {
     runtime.models = attachModelRuntime(ctx, {
@@ -167,6 +194,26 @@ function attachP1Runtimes(
     runtime.schedules = attachBotSchedules(ctx, {
       schedule: services.schedule as ScheduleService,
       rootSessionId,
+    })
+  })
+
+  // P2：ctx.agentTeams（dsh-experimental-agent-team）。门面只做 caller 透传；
+  // 本函数由异步装配在 store 就绪后调用（attachP1Runtimes 的 store 参数）。
+  ctx.inject(['agentTeams'], (services) => {
+    const teams = createAgentTeamsFacade(services.agentTeams as AgentTeamsService)
+    runtime.teams = teams
+    runtime.tasks = createTaskBoard(teams)
+    const judge: JevJudge | undefined = options.typesafe?.judge ??
+      (options.typesafe?.apiKey !== undefined
+        ? createJevJudge({ apiKey: options.typesafe.apiKey, endpoint: options.typesafe.endpoint })
+        : undefined)
+    if (judge === undefined) {
+      ctx.logger?.warn('dsh-bot: 未配置 typesafe.apiKey/judge，群聊路由走降级（本轮无人响应提示）')
+    }
+    runtime.groups = createGroupChatRuntime(ctx, {
+      store,
+      judge,
+      sessionId: options.rootSessionId,
     })
   })
 }
