@@ -1,0 +1,37 @@
+{
+  "name": "dsh-bot",
+  "version": "0.0.1",
+  "description": "对标 Grok Bot 的 DSH 插件：Bot 团队、持久身份、例程与连接器（P0：工程骨架 + 名册 + 人格注入）",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsdown": "^0.14.0",
+    "typescript": "^5.7.0"
+  }
+}

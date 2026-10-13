@@ -1,0 +1,6 @@
+# dsh-bot 的 profile 补丁层：把插件自身插进 dsh-base 之后的装载序列。
+# insert 只认 id + name（config 可选），见 research/dsh-plugin-skeleton.md §2.3。
+# P2 若要接替原生 subagent 控件，在这里追加 disabled 行即可。
+- insert:
+    - id: dsh-bot
+      name: 'dsh-bot'
