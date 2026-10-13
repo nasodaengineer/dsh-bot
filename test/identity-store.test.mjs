@@ -11,7 +11,7 @@ test('身份存储：put/get/list 走 KV unit（表名 bots，单元名 dsh-bot�
   await store.put(BOT)
   assert.deepEqual(await store.get('bot-alice'), BOT)
   assert.deepEqual(await store.list(), [BOT])
-  assert.deepEqual(ctx.openedUnits[0], { name: 'dsh-bot', version: 1, tables: ['bots'], hasGlobal: false })
+  assert.deepEqual(ctx.openedUnits[0], { name: 'dsh-bot', version: 1, tables: ['bots', 'selection'], hasGlobal: false })
 })
 
 test('身份存储：remove 后 get 返回 undefined', async () => {
