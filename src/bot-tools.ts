@@ -9,6 +9,7 @@
 import type { BotRoster } from './roster.js'
 import type { BotSchedulesRuntime } from './schedules.js'
 import type { MemoryRepo } from './memory.js'
+import type { TemplateStore } from './template.js'
 import type { HostContext, ScheduleCreateRequest, ToolsService } from './types.js'
 
 /** MCP server 名文法（预留 P2，先在这里冻结） */
@@ -72,6 +73,8 @@ export interface BotToolsDeps {
   readonly getMemory: () => MemoryRepo | undefined
   /** 当前选中 Bot（记忆按 Bot 隔离） */
   readonly getSelectedBotId: () => string | undefined
+  /** 模板仓库（票 #11，异步就绪） */
+  readonly getTemplates: () => TemplateStore | undefined
 }
 
 /** execute 统一包装：工具永不抛错 */
@@ -264,6 +267,57 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
         if (repo === undefined || botId === undefined) return { error: 'dsh-bot: 记忆仓库未就绪或未选中 Bot' }
         const limit = (args as { limit?: number }).limit
         return { journal: await repo.journal(botId, typeof limit === 'number' ? limit : undefined) }
+      }),
+  })
+
+  // ---- 票 #11：bot_template_* 三件 ----
+  register({
+    name: 'bot_template_export',
+    description: '把一个 Bot 导出成模板（人格 + 可选记忆 + 技能清单；非标准插件如 MCP server 不打包）',
+    parameters: {
+      type: 'object',
+      properties: { botId: { type: 'string' }, includeMemory: { type: 'boolean' }, name: { type: 'string' } },
+      required: ['botId', 'includeMemory'],
+    },
+    execute: (args) =>
+      safeExecute(async () => {
+        const store = deps.getTemplates()
+        if (store === undefined) return { error: 'dsh-bot: 模板仓库未就绪' }
+        const a = args as { botId?: string; includeMemory?: boolean; name?: string }
+        if (typeof a.botId !== 'string' || typeof a.includeMemory !== 'boolean') {
+          return { error: 'dsh-bot: botId 与 includeMemory 必填' }
+        }
+        return { template: await store.exportTemplate(a.botId, { includeMemory: a.includeMemory, name: a.name }) }
+      }),
+  })
+
+  register({
+    name: 'bot_template_import',
+    description: '从模板导入派生一个新 Bot（人格 + 技能重建 + 记忆按模板还原）',
+    parameters: {
+      type: 'object',
+      properties: { templateId: { type: 'string' }, name: { type: 'string' } },
+      required: ['templateId'],
+    },
+    execute: (args) =>
+      safeExecute(async () => {
+        const store = deps.getTemplates()
+        if (store === undefined) return { error: 'dsh-bot: 模板仓库未就绪' }
+        const a = args as { templateId?: string; name?: string }
+        if (typeof a.templateId !== 'string') return { error: 'dsh-bot: templateId 必填' }
+        return store.importTemplate(a.templateId, { name: a.name })
+      }),
+  })
+
+  register({
+    name: 'bot_template_list',
+    description: '列出全部已导出的 Bot 模板',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    execute: () =>
+      safeExecute(async () => {
+        const store = deps.getTemplates()
+        if (store === undefined) return { error: 'dsh-bot: 模板仓库未就绪' }
+        return { templates: await store.list() }
       }),
   })
 

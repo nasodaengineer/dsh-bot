@@ -28,6 +28,7 @@ import { createTaskBoard, type TaskBoard } from './taskboard.js'
 import { createJevJudge, type JevJudge } from './jev.js'
 import { createGroupChatRuntime, type GroupChatRuntime } from './groupchat.js'
 import { createMemoryRepo, type MemoryRepo } from './memory.js'
+import { createTemplateStore, type TemplateStore } from './template.js'
 
 export const name = 'dsh-bot'
 
@@ -60,6 +61,8 @@ export interface DshBotRuntime {
   readonly groups?: GroupChatRuntime
   /** P3：Bot 记忆仓库（票 #10，异步就绪） */
   readonly memory?: MemoryRepo
+  /** P3：Bot 模板仓库（票 #11，异步就绪） */
+  readonly templates?: TemplateStore
   readonly mcp: McpBridge
 }
 
@@ -82,6 +85,7 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     tasks?: TaskBoard
     groups?: GroupChatRuntime
     memory?: MemoryRepo
+    templates?: TemplateStore
   } = {}
   let storeRef: IdentityStore | undefined
 
@@ -114,6 +118,13 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     runtime.selectedId = await store.getSelectedId()
     // 票 #10：记忆仓库与身份共用 KV unit 'dsh-bot'（自有表），失败内部降级
     runtime.memory = await createMemoryRepo(ctx)
+    // 票 #11：模板仓库（依赖 roster/memory/schedules 的 getter，见下）
+    runtime.templates = await createTemplateStore(ctx, {
+      roster,
+      getMemory: () => runtime.memory,
+      getSchedules: () => runtime.schedules,
+      getMcpServerNames: () => mcp.configured.map((c) => c.name),
+    })
 
     if (ctx.systemPrompt !== undefined) {
       ctx.systemPrompt.section(personaSection(store, { selectedId: () => runtime.selectedId }))
@@ -140,6 +151,7 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     get tasks() { return runtime.tasks },
     get groups() { return runtime.groups },
     get memory() { return runtime.memory },
+    get templates() { return runtime.templates },
     mcp,
     selection: {
       async selectBot(id) {
@@ -183,6 +195,7 @@ function attachP1Runtimes(
       getSchedules,
       getMemory: () => runtime.memory as MemoryRepo | undefined,
       getSelectedBotId: () => runtime.selectedId as string | undefined,
+      getTemplates: () => runtime.templates as TemplateStore | undefined,
     })
   })
 
