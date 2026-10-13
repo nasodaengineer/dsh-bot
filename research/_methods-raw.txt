@@ -1,0 +1,583 @@
+########## dsh-agent-preset-registry ##########
+index.d.ts:22: export declare class AgentPresetRegistry extends TypertRemoteService {
+index.d.ts:37: constructor(ctx: Context, config: Config);
+index.d.ts:44: register(definition: PresetDefinition): Promise<() => Promise<void>>;
+index.d.ts:64: inspectCompositions(ctx?: Context): AgentPresetInspection[];
+index.d.ts:68: list(): Promise<AgentPreset[]>;
+index.d.ts:72: remoteExportList(): Promise<AgentPresetRoster>;
+index.d.ts:77: resolve(id?: string): Promise<AgentPreset>;
+index.d.ts:82: readDocument(agentPreset: string): Promise<AgentPresetDocument>;
+index.d.ts:91: mount(ctx: Context, id?: string): Promise<AgentPreset>;
+index.d.ts:97: composeFrom(ctx: Context, parent: Context): string | undefined;
+index.d.ts:102: composedPreset(ctx: Context): string | undefined;
+index.d.ts:116: recompose(ctx: Context, id: string): Promise<AgentPreset>;
+index.d.ts:122: select(agent: Agent, agentPreset: string): Promise<string>;
+index.d.ts:127: acquireScope(id?: string): Promise<{
+index.d.ts:133: compositionInventory(): Promise<AgentPresetComposition[]>;
+
+########## dsh-agent-loop ##########
+agent.d.ts:12: export declare class ReactLoopAgent implements Agent {
+agent.d.ts:36: constructor(loopCtx: Context, id: SessionId, options: AgentOptions, session: Session);
+agent.d.ts:40: send(message: UserMessage, target: InboxTarget, wakeup: boolean): void;
+agent.d.ts:41: followup(input: UserMessage): void;
+agent.d.ts:42: steer(input: UserMessage): void;
+agent.d.ts:43: inject(input: UserMessage): void;
+agent.d.ts:44: cancel(cause: AgentCancelCause, options?: CancelOptions): void;
+agent.d.ts:55: whenIdle(): Promise<void>;
+assistant-stream.d.ts:6: export declare class AssistantStreamAttempt {
+assistant-stream.d.ts:27: constructor(sessionId: SessionId, attempt: number, nextRevision: () => number, turn: number, step: number, emit: (frame: AssistantStreamFrame) => void);
+assistant-stream.d.ts:29: start(): void;
+assistant-stream.d.ts:31: push(chunk: StreamChunk): void;
+assistant-stream.d.ts:37: settle(eventType: 'assistant/message' | 'assistant/attempt', append: () => SessionSeq): void;
+assistant-stream.d.ts:39: abandon(): void;
+assistant-stream.d.ts:43: blocks(): ContentBlock[];
+assistant-stream.d.ts:45: interruptedBlocks(): ContentBlock[];
+inbox.d.ts:24: apply(state: InboxState, event: import("@deepseek-ai/dsh-session").SessionEvent): InboxState;
+inbox.d.ts:38: export declare class ReactLoopInbox implements InboxContract {
+inbox.d.ts:42: constructor(projections: SessionProjectionRegistry, session: Session, dispatch: AgentEventDispatch);
+inbox.d.ts:50: clear(): void;
+inbox.d.ts:57: claim(target: InboxTarget, turn: number): UserMessage[];
+inbox.d.ts:63: append(target: InboxTarget, message: UserMessage): void;
+inbox.d.ts:69: prepend(target: InboxTarget, message: UserMessage): void;
+inbox.d.ts:76: replace(messageId: MessageId, newMessage: UserMessage): boolean;
+inbox.d.ts:82: remove(messageId: MessageId): boolean;
+inbox.d.ts:91: splice(target: InboxTarget, start: number, deleteCount: number, inserted: UserMessage[]): UserMessage[];
+index.d.ts:99: export declare class AgentLoop extends Service implements AgentFactory {
+index.d.ts:111: constructor(ctx: Context, config: Config);
+index.d.ts:135: create(id: SessionId, options?: AgentOptions, meta?: Pick<SessionHeader, 'cwd'>): Promise<Agent>;
+index.d.ts:164: createAgent(ownerCtx: Context, options: CreateAgentOptions): Promise<AgentHandle>;
+index.d.ts:174: resume(ownerCtx: Context, options: ResumeAgentOptions): Promise<AgentHandle>;
+runtime-context.d.ts:43: export declare class SystemPromptProjection {
+runtime-context.d.ts:45: constructor(session: Session);
+runtime-context.d.ts:54: project(rendered: string, input: SystemPromptDecisionInput): SystemPromptCommit[];
+runtime-context.d.ts:58: export declare class RuntimeContextProjection {
+runtime-context.d.ts:66: constructor(ctx: Context, session: Session);
+runtime-context.d.ts:73: project(current: string, sections: readonly ContextSnapshotSection[]): UserMessage | undefined;
+
+########## dsh-subagent ##########
+activation.d.ts:10: export declare class ActivationPool {
+activation.d.ts:17: reserve(capacity: number): () => void;
+activation.d.ts:103: export declare class ChildLock {
+assistant-output.d.ts:20: export declare class AssistantOutputFold {
+assistant-output.d.ts:29: push(event: SessionEvent): void;
+assistant-output.d.ts:34: pushText(text: string): void;
+assistant-output.d.ts:40: collect(): readonly ContentBlock[] | undefined;
+child-agent.d.ts:14: export declare class SubagentDepthError extends Error {
+child-agent.d.ts:17: constructor(attemptedDepth: number, maxDepth: number);
+error.d.ts:8: export declare class SubagentError extends HarnessError {
+error.d.ts:9: constructor(message: string, code: string, options?: ErrorOptions);
+index.d.ts:105: export declare class SubagentRuntime extends TypertRemoteService {
+index.d.ts:123: constructor(ctx: Context, config: Config);
+index.d.ts:129: resolveMaxDepth(configured?: number | 'provider-managed'): number | undefined;
+index.d.ts:135: startActivation(spec: SubagentActivationSpec & {
+index.d.ts:145: startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation>;
+index.d.ts:152: waitForChildren(parent: Agent): Promise<boolean>;
+index.d.ts:167: sendMessage(sender: Agent, targetId: SessionId, content: ContentBlock[], options: SubagentSendMessageOptions): Promise<MessageId>;
+index.d.ts:196: interrupt(targetSessionId: SessionId, authority: SubagentInterruptAuthority): void;
+index.d.ts:207: drainDescendants(parents: readonly Agent[]): Promise<void>;
+index.d.ts:218: drainChildren(parent: Agent, childIds: readonly SessionId[]): Promise<void>;
+index.d.ts:228: listChildren(parentSessionId: SessionId, signal?: AbortSignal): Promise<SubagentCatalogEntry[]>;
+index.d.ts:245: listDescendants(rootSessionId: SessionId, signal?: AbortSignal): Promise<SubagentDescendantListEntry[]>;
+index.d.ts:264: prompt(request: SubagentPromptRequest, signal: AbortSignal): Promise<SubagentPromptReceipt>;
+index.d.ts:279: interruptByParent(childSessionId: SessionId, parentSessionId: SessionId, mode: 'continuable'): SubagentInterruptReceipt;
+index.d.ts:288: registerProvider(provider: SubagentProvider): () => void;
+index.d.ts:294: getProvider(name: string): SubagentProvider | undefined;
+index.d.ts:299: list(): string[];
+lifecycle.d.ts:23: start(child?: Agent): void;
+lifecycle.d.ts:31: settle(result: SubagentResult): void;
+manager.d.ts:16: startExternal(name: string, request: ResolvedSubagentStartRequest): Promise<SubagentRun>;
+manager.d.ts:18: prepareContinuable(name: string, request: ContinuableCreateRequest): Promise<ContinuableCreateSpec>;
+manager.d.ts:20: observeActivation(provider: string, childId: SessionId, parent: Agent): ActivationObserver;
+manager.d.ts:23: export declare class SubagentManager {
+manager.d.ts:51: constructor(ctx: Context, host: SubagentHost, maxActiveSubagents: () => number);
+manager.d.ts:57: interrupt(targetSessionId: SessionId, authority: SubagentInterruptAuthority): void;
+manager.d.ts:63: drain(): Promise<void>;
+manager.d.ts:69: waitForChildren(parent: Agent): Promise<boolean>;
+manager.d.ts:74: drainDescendants(parents: readonly Agent[]): Promise<void>;
+manager.d.ts:80: drainChildren(parent: Agent, childIds: readonly SessionId[]): Promise<void>;
+manager.d.ts:88: startLocal(spec: SubagentActivationSpec): Promise<SubagentActivation & {
+manager.d.ts:96: startExternal(spec: SubagentActivationSpec): Promise<SubagentActivation>;
+manager.d.ts:109: sendMessage(sender: Agent, targetId: SessionId, content: ContentBlock[], options: SubagentSendMessageOptions): Promise<MessageId>;
+manager.d.ts:119: queuePrompt(parent: Agent, childId: SessionId, content: ContentBlock[], source: MessageSource, signal: AbortSignal): Promise<MessageId>;
+manager.d.ts:129: steerPrompt(parent: Agent, childId: SessionId, content: ContentBlock[], source: MessageSource, signal: AbortSignal): Promise<MessageId>;
+structured.d.ts:29: acceptsInput(): boolean;
+structured.d.ts:35: captured(): {
+types.d.ts:51: dispose(): Promise<void>;
+types.d.ts:296: dispose(): Promise<void>;
+
+########## dsh-workflow ##########
+index.d.ts:91: export declare class WorkflowError extends HarnessError {
+index.d.ts:94: constructor(message: string, code: WorkflowErrorCode, options?: ErrorOptions & {
+index.d.ts:111: export declare abstract class WorkflowEngine extends Service {
+index.d.ts:112: constructor(ctx: Context);
+index.d.ts:119: abstract start(request: WorkflowStartRequest): WorkflowRun;
+runtime-types.d.ts:41: cancel(reason?: string): void;
+runtime-types.d.ts:43: dispose(): Promise<void>;
+
+########## dsh-storage ##########
+backend.d.ts:23: close(): Promise<void>;
+backend.d.ts:38: open(descriptor: KvUnitDescriptor): Promise<KvUnit>;
+backend.d.ts:85: loadAll(): Promise<{
+backend.d.ts:98: putRecord(table: string, key: string, value: unknown): Promise<void>;
+backend.d.ts:105: deleteRecord(table: string, key: string): Promise<void>;
+backend.d.ts:124: setGlobal(value: unknown): Promise<void>;
+backend.d.ts:129: close(): Promise<void>;
+error.d.ts:11: export declare class StorageError extends Error {
+error.d.ts:19: constructor(code: StorageErrorCode, message: string, options?: ErrorOptions);
+index.d.ts:39: export declare class Storage extends Service {
+index.d.ts:43: constructor(ctx: Context);
+registry.d.ts:11: export declare class BackendRegistry {
+registry.d.ts:21: register(name: string, backend: StorageBackend): () => void;
+registry.d.ts:27: get(name: string): StorageBackend;
+registry.d.ts:32: names(): string[];
+
+########## dsh-shell ##########
+index.d.ts:47: export declare abstract class ShellExecutor extends Service {
+index.d.ts:48: constructor(ctx: Context);
+index.d.ts:61: abstract resolve(request: ShellExecRequest): ShellExecSpec;
+index.d.ts:69: abstract execute(spec: ShellExecSpec): Promise<ShellExecution>;
+types.d.ts:196: readOutput(): ShellProcessRead;
+types.d.ts:208: kill(): boolean;
+types.d.ts:225: result(): Promise<ShellRunResult>;
+
+########## dsh-terminal ##########
+index.d.ts:21: export declare class TerminalError extends Error {
+index.d.ts:23: constructor(message: string, code: TerminalErrorCode);
+index.d.ts:32: export declare class TerminalSessionService extends Service {
+index.d.ts:41: constructor(ctx: Context);
+index.d.ts:47: registerBackend(backend: TerminalBackend): () => void;
+index.d.ts:52: listBackends(): string[];
+index.d.ts:60: spawn(owner: Agent, request: TerminalSpawnRequest, signal?: AbortSignal): Promise<TerminalSpawnResult>;
+index.d.ts:66: hasOwnerActivity(owner: Agent): boolean;
+index.d.ts:74: startSend(owner: Agent, id: TerminalSessionId, request: TerminalSendRequest): TerminalSendOperation;
+index.d.ts:82: read(owner: Agent, id: TerminalSessionId, request?: TerminalReadRequest): TerminalReadResult;
+index.d.ts:90: signal(owner: Agent, id: TerminalSessionId, signal: TerminalSignal): Promise<TerminalSignalResult>;
+index.d.ts:98: kill(owner: Agent, id: TerminalSessionId, reason?: string): Promise<boolean>;
+index.d.ts:104: list(owner: Agent): TerminalSessionSnapshot[];
+types.d.ts:15: export declare class TerminalBackendCleanupError extends AggregateError {
+types.d.ts:18: constructor(spawnError: unknown, cleanupError: unknown);
+types.d.ts:86: readOutput(): TerminalSendRead;
+types.d.ts:88: cancel(): boolean;
+types.d.ts:137: startSend(request: TerminalSendRequest): TerminalSendOperation;
+types.d.ts:139: read(request: TerminalReadRequest): TerminalReadResult;
+types.d.ts:141: signal(signal: TerminalSignal): Promise<TerminalSignalResult>;
+types.d.ts:143: status(): TerminalSessionStatus;
+types.d.ts:145: close(reason: string): Promise<void>;
+types.d.ts:152: spawn(spec: TerminalBackendSpawnSpec): Promise<TerminalBackendSession>;
+
+########## dsh-plugin-manager ##########
+failure.d.ts:5: export declare class ManagementFailure extends Error {
+failure.d.ts:14: constructor(code: ManagementError['code'], incompatible?: IncompatiblePlugin[]);
+index.d.ts:38: export declare class PluginManager extends TypertRemoteService {
+index.d.ts:57: constructor(ctx: Context, config: Config);
+index.d.ts:62: listVersionExemptions(): {
+index.d.ts:73: setVersionExemption(packageVersion: string, runtimeVersion: string, enabled: boolean, acceptRisk?: boolean): Promise<ChangeResult>;
+index.d.ts:77: listPlugins(): Promise<PluginInfo[]>;
+index.d.ts:83: listBundles(): Promise<BundleInfo[]>;
+index.d.ts:87: registries(): Promise<PluginRegistries>;
+index.d.ts:94: inspect(spec: string, options?: InspectOptions, signal?: AbortSignal): Promise<PluginSpecInspection>;
+index.d.ts:100: setPluginEnabled(id: PluginEntryId, enabled: boolean): Promise<ChangeResult>;
+index.d.ts:106: setBundleEnabled(name: string, enabled: boolean): Promise<ChangeResult>;
+index.d.ts:118: installBundle(spec: string, options?: InstallBundleOptions): Promise<ChangeResult>;
+index.d.ts:124: waitForInstall(requestId: PluginInstallRequestId): Promise<ChangeResult | null>;
+index.d.ts:130: cancelInstall(requestId: PluginInstallRequestId): Promise<PluginInstallCancellation>;
+index.d.ts:136: removeBundle(name: string): Promise<ChangeResult>;
+install-spec.d.ts:31: export declare class InvalidInstallSpecError extends Error {
+install-spec.d.ts:38: constructor(spec: string, reason: string);
+
+########## dsh-jobs ##########
+index.d.ts:59: export declare abstract class JobRegistry extends Service {
+index.d.ts:60: constructor(ctx: Context);
+index.d.ts:71: abstract start(spec: JobSpec): JobId;
+index.d.ts:77: abstract list(caller?: SessionId): JobView[];
+index.d.ts:85: abstract get(id: JobId, caller?: SessionId): JobView;
+index.d.ts:94: abstract read(id: JobId, caller?: SessionId): JobRead;
+index.d.ts:105: abstract readAt(id: JobId, from: number, caller?: SessionId): JobOutputRead;
+index.d.ts:116: abstract kill(id: JobId, caller?: SessionId, reason?: string): 'requested' | 'already-finished';
+index.d.ts:128: abstract wait(id: JobId, timeoutMs: number, caller?: SessionId, signal?: AbortSignal): Promise<JobView>;
+index.d.ts:137: abstract remove(id: JobId, caller?: SessionId): void;
+index.d.ts:145: abstract attachController(name: string): () => void;
+types.d.ts:58: read(fromByte: number): JobSourceRead;
+types.d.ts:88: append(text: string, options?: JobAppendOptions): void;
+types.d.ts:94: updateProgress(line: string): void;
+types.d.ts:102: cancel(reason?: string): void;
+types.d.ts:148: run(job: JobHandle): JobHooks;
+types.d.ts:236: subscribe(filter: JobEventFilter, listener: JobEventListener): () => void;
+
+########## dsh-goal ##########
+index.d.ts:55: export declare class GoalService extends TypertRemoteService {
+index.d.ts:60: constructor(ctx: Context, config?: Config);
+index.d.ts:67: get(agent: Agent): GoalView | undefined;
+index.d.ts:75: disarm(agent: Agent): GoalView | undefined;
+index.d.ts:83: create(agent: Agent, request: CreateGoalRequest): GoalView;
+index.d.ts:91: edit(agent: Agent, ref: GoalRef, request: EditGoalRequest): GoalView;
+index.d.ts:98: pause(agent: Agent, ref: GoalRef): GoalView;
+index.d.ts:106: resume(agent: Agent, ref: GoalRef): GoalView;
+index.d.ts:113: complete(agent: Agent, ref: GoalRef): GoalView;
+index.d.ts:121: block(agent: Agent, ref: GoalRef, reason: GoalBlockReason): GoalView;
+index.d.ts:128: clear(agent: Agent, ref: GoalRef): GoalRef;
+index.d.ts:163: remoteExportCreate(agent: Agent, request: CreateGoalRequest): CreateGoalResult;
+runtime.d.ts:14: export declare class GoalError extends HarnessError {
+runtime.d.ts:19: constructor(message: string, code: GoalErrorCode);
+
+########## dsh-session-title ##########
+index.d.ts:51: export declare class SessionTitleInvalidError extends Error {
+index.d.ts:93: generate(request: SessionTitleProviderRequest): Promise<SessionTitleProviderResult>;
+index.d.ts:114: export declare class SessionTitleService extends Service {
+index.d.ts:123: constructor(ctx: Context, config: Config);
+index.d.ts:129: get(session: Session): SessionTitleSnapshot | undefined;
+index.d.ts:141: rename(session: Session, title: string): SessionTitleSnapshot;
+index.d.ts:149: refresh(session: Session, signal?: AbortSignal): Promise<SessionTitleSnapshot | undefined>;
+index.d.ts:157: register(provider: SessionTitleProvider): () => Promise<void>;
+
+########## dsh-authorization ##########
+index.d.ts:50: export declare class AuthorizationError extends HarnessError {
+index.d.ts:51: constructor(message: string, code: string, options?: ErrorOptions);
+index.d.ts:63: export declare class AuthorizationDeclinedError extends AuthorizationError {
+index.d.ts:64: constructor(message?: string);
+index.d.ts:80: commit(record: CredentialRecord): Promise<void>;
+index.d.ts:86: notify(notice: AuthorizationNotice): void;
+index.d.ts:93: prompt(prompt: AuthorizationPrompt): Promise<string>;
+index.d.ts:121: run(session: AuthorizationSession): Promise<void>;
+index.d.ts:134: notify(notice: AuthorizationNotice): void;
+index.d.ts:142: prompt(prompt: AuthorizationPrompt): Promise<string>;
+index.d.ts:159: export declare class AuthorizationService extends Service {
+index.d.ts:164: constructor(ctx: Context);
+index.d.ts:174: registerFlow(flow: AuthorizationFlow): () => void;
+index.d.ts:179: list(): readonly AuthorizationEntry[];
+index.d.ts:185: describe(key: CredentialKey): AuthorizationEntry | undefined;
+index.d.ts:194: cancel(key: CredentialKey): void;
+index.d.ts:212: begin(request: AuthorizationRequest): Promise<AuthorizationOutcome>;
+
+########## dsh-sandbox ##########
+escalation.d.ts:90: request(req: {
+index.d.ts:113: export declare class SandboxUnavailableError extends HarnessError {
+index.d.ts:114: constructor(mode: ConfinedSandboxMode, detail?: string);
+index.d.ts:127: export declare abstract class SandboxProvider extends Service {
+index.d.ts:128: constructor(ctx: Context);
+index.d.ts:141: abstract confine(argv: readonly string[], policy: SandboxPolicy, signal?: AbortSignal): Promise<ConfinedArgv>;
+
+########## dsh-permission-presets ##########
+index.d.ts:95: export declare class PermissionPresetService extends TypertRemoteService {
+index.d.ts:127: constructor(ctx: Context, config: Config);
+index.d.ts:138: catalog(): PermissionCatalog;
+index.d.ts:145: registerAuto(admit: () => void): () => Promise<void>;
+index.d.ts:162: current(session: Session): string;
+index.d.ts:171: resolve(name: string): PresetSpec;
+index.d.ts:179: optionOf(name: string): PresetOption;
+index.d.ts:186: set(session: Session, name: string): void;
+
+########## dsh-session-projection ##########
+index.d.ts:49: init(header: SessionHeader, inheritedEventCount: SessionLogOffset): NoInfer<S>;
+index.d.ts:58: apply(state: NoInfer<S>, event: SessionEvent): NoInfer<S>;
+index.d.ts:134: export declare class SessionProjectionRegistry extends Service {
+index.d.ts:141: constructor(ctx: Context);
+index.d.ts:166: onChanged(listener: ProjectionChangeListener): () => void;
+index.d.ts:185: snapshot(session: Session, keys?: readonly Extract<keyof SessionProjectionMap, string>[]): ProjectionSnapshot;
+index.d.ts:194: cachedSnapshot(session: Session, keys?: readonly Extract<keyof SessionProjectionMap, string>[]): ProjectionSnapshot | undefined;
+index.d.ts:209: checkpoint(session: Session): ProjectionCheckpoint;
+index.d.ts:226: restoreFloor(checkpoint: ProjectionCheckpoint): SessionLogOffset | undefined;
+index.d.ts:238: viewCheckpoint(checkpoint: ProjectionCheckpoint, keys?: readonly Extract<keyof SessionProjectionMap, string>[]): Partial<SessionProjectionMap>;
+index.d.ts:263: restore(checkpoint: ProjectionCheckpoint, events: readonly SessionEvent[], baseSeq: SessionLogOffset, header: SessionHeader, inheritedEventCount: SessionLogOffset): {
+index.d.ts:277: hydrate(session: Session, checkpoint: ProjectionCheckpoint, events: readonly SessionEvent[], baseSeq: SessionLogOffset): ProjectionSnapshot;
+
+########## dsh-session-query ##########
+config.d.ts:25: export declare class SessionQueryError extends HarnessError {
+config.d.ts:27: constructor(message: string, code: SessionQueryErrorCode, options?: ErrorOptions);
+corpus.d.ts:32: export declare class SessionCorpus {
+corpus.d.ts:37: constructor(_ctx: Context, _persistedReadConcurrency: number);
+corpus.d.ts:43: listSessions(signal?: AbortSignal): Promise<SessionRecord[]>;
+corpus.d.ts:53: load(sessionId: SessionId, signal?: AbortSignal): Promise<LogicalSession>;
+index.d.ts:35: export declare abstract class SessionQueryEngine extends Service {
+index.d.ts:40: constructor(ctx: Context, config?: Config);
+index.d.ts:47: observeSession(sessionId: SessionId, options?: SessionObservationOptions): Promise<SessionObservation>;
+index.d.ts:54: abstract searchSessions(request: SessionSearchRequest, exec?: SessionSearchExecContext): Promise<SessionSearchPage<SessionSearchHit>>;
+index.d.ts:61: abstract searchEvents(request: SessionEventSearchRequest, exec?: SessionSearchExecContext): Promise<SessionEventSearchPage>;
+index.d.ts:67: listSessions(signal?: AbortSignal): Promise<SessionRecord[]>;
+index.d.ts:74: readSession(sessionId: SessionId): Promise<SessionLogSnapshot>;
+index.d.ts:81: filterSessions(filters: readonly SessionResultFilter[], signal?: AbortSignal): Promise<SessionRecord[]>;
+index.d.ts:88: readTitle(sessionId: SessionId, signal?: AbortSignal): Promise<SessionTitleSnapshot | undefined>;
+index.d.ts:95: readTitleSnapshot(sessionId: SessionId, signal?: AbortSignal): Promise<SessionTitleObservation>;
+index.d.ts:105: readTitleSnapshots(sessionIds: readonly SessionId[], signal?: AbortSignal): Promise<SessionTitleObservationResult[]>;
+index.d.ts:111: listEvents(sessionId: SessionId): Promise<SessionEventRecord[]>;
+index.d.ts:118: filterEvents(sessionId: SessionId, filters: readonly SessionEventResultFilter[]): Promise<SessionEventSearchDocument[]>;
+index.d.ts:127: readSurface(sessionId: SessionId): Promise<SessionSurfaceSnapshot>;
+index.d.ts:135: traceSession(sessionId: SessionId, signal?: AbortSignal): Promise<SessionLineageTrace>;
+index.d.ts:143: traceEvent(request: SessionEventTraceRequest, signal?: AbortSignal): Promise<SessionEventTraceObservation>;
+index.d.ts:150: readEvent(request: SessionEventReadRequest, signal?: AbortSignal): Promise<SessionEventWindow>;
+observation.d.ts:30: retain(): SessionObservation;
+observation.d.ts:49: export declare class SessionObservationReader {
+observation.d.ts:57: constructor(ctx: Context, cacheCapacity?: number);
+observation.d.ts:65: read(sessionId: SessionId, options?: SessionObservationOptions): Promise<SessionObservation>;
+
+########## dsh-mcp-resources ##########
+index.d.ts:30: request(request: McpResourceRequest, exec: ToolExecution): Promise<JsonValue>;
+index.d.ts:33: export declare class McpResourceRuntime extends Service {
+index.d.ts:39: constructor(ctx: Context);
+index.d.ts:46: register(server: string, provider: McpResourceProvider): () => void;
+
+########## dsh-settings ##########
+index.d.ts:31: export declare class SettingsConflictError extends Error {
+index.d.ts:43: constructor(ns: SettingsNamespace, expected: number, actual: number);
+index.d.ts:62: export declare class SettingsForms extends Service {
+index.d.ts:69: constructor(ownerContext: Context);
+index.d.ts:80: configure(presentation: {
+index.d.ts:91: prepareDocument(): Promise<string>;
+index.d.ts:96: describe(options?: SettingsDescribeOptions): SettingsDescriptor[];
+index.d.ts:102: update(ns: string, patch: object, expectedRevision?: number): Promise<void>;
+index.d.ts:108: replace(ns: string, section: object, expectedRevision?: number): Promise<void>;
+index.d.ts:114: mutate(ns: string, ops: readonly SettingsPathOp[], expectedRevision?: number): Promise<void>;
+
+########## dsh-config-editor ##########
+index.d.ts:10: export declare class ConfigEditor extends Service {
+index.d.ts:13: constructor(ownerContext: Context);
+index.d.ts:19: entries(): Entry[];
+index.d.ts:23: configuration(): Array<{
+index.d.ts:34: edit(entry: Entry, change: (current: Record<string, unknown>, inherited: Record<string, unknown>) => Record<string, unknown>): Promise<void>;
+
+########## dsh-attachment ##########
+error.d.ts:17: export declare class AttachmentError extends Error {
+error.d.ts:25: constructor(message: string, code: AttachmentErrorCode, options?: ErrorOptions);
+index.d.ts:18: export declare abstract class AttachmentStore extends Service {
+index.d.ts:19: constructor(ctx: Context);
+index.d.ts:28: abstract validateImage(input: SaveImageAttachment): Promise<void>;
+index.d.ts:43: saveImages(inputs: readonly SaveImageAttachment[]): Promise<readonly ImageAttachmentRef[]>;
+index.d.ts:51: admitPromptContent(content: readonly AttachmentAdmissionPart[]): Promise<AdmittedPromptContentPart[]>;
+index.d.ts:58: admitEncodedFile(input: EncodedFileAttachment): Promise<FileAttachmentRef>;
+index.d.ts:64: isAttachmentError(error: unknown): error is AttachmentError;
+index.d.ts:73: abstract saveImage(input: SaveImageAttachment): Promise<ImageAttachmentRef>;
+index.d.ts:81: abstract readImage(ref: ImageAttachmentRef, signal?: AbortSignal): Promise<StoredImageAttachment>;
+index.d.ts:88: imageHostPath(ref: ImageAttachmentRef): string | undefined;
+index.d.ts:97: saveFile(input: SaveFileAttachment): Promise<FileAttachmentRef>;
+index.d.ts:105: saveFileStream(input: SaveFileStreamAttachment): Promise<FileAttachmentRef>;
+index.d.ts:114: readFileStream(ref: FileAttachmentRef, signal?: AbortSignal): AsyncIterable<Uint8Array>;
+index.d.ts:121: fileHostPath(ref: FileAttachmentRef): string | undefined;
+index.d.ts:129: readImageRequest(ref: ImageAttachmentRef, target: ImageRequestTarget, signal?: AbortSignal): Promise<RequestImageAttachment>;
+
+########## dsh-compaction ##########
+index.d.ts:33: export declare class ManualCompactionError extends Error {
+index.d.ts:42: constructor(code: ManualCompactionErrorCode, message: string, options?: ErrorOptions);
+index.d.ts:102: export declare abstract class CompactionEngine extends Service {
+index.d.ts:103: constructor(ctx: Context);
+index.d.ts:116: abstract compactIfNeeded(agent: CompactionAgentContext, trigger: CompactionTrigger, signal: AbortSignal): Promise<CompactionResult | null>;
+index.d.ts:137: abstract compactNow(agent: ManualCompactAgentContext, signal: AbortSignal, sourceCommandId?: CommandId): Promise<CompactionResult | null>;
+index.d.ts:157: abstract compactRegion(start: SessionSeq, end: SessionSeq, agent: CompactionAgentContext, signal?: AbortSignal): Promise<CompactionResult>;
+
+########## dsh-host-webserver ##########
+index.d.ts:119: export declare class WebServer extends Service {
+index.d.ts:140: constructor(ctx: Context, config: Config);
+index.d.ts:157: register(route: WebRoute): () => void;
+index.d.ts:164: registerUpgrade(route: WebUpgradeRoute): () => void;
+index.d.ts:173: registerFallback(handler: WebRoute['handler']): () => void;
+index.d.ts:181: tapIndex(transform: (html: string) => string): () => void;
+index.d.ts:192: applyIndexTaps(html: string): string;
+index.d.ts:199: collectIndexInjections(): IndexInjection[];
+index.d.ts:206: renderIndex(html: string): string;
+
+########## dsh-api-session-controller ##########
+agent.d.ts:9: export declare class ApiSessionNotFound extends Error {
+agent.d.ts:12: export declare class ApiSessionSubagentOwnership extends Error {
+agent.d.ts:15: constructor(sessionId: SessionId);
+agent.d.ts:18: export declare class ApiSessionCwdConflict extends Error {
+agent.d.ts:22: constructor(sessionId: SessionId, requestedCwd: string, existingCwd: string | undefined);
+agent.d.ts:25: export declare class ApiSessionPresetConflict extends Error {
+agent.d.ts:29: constructor(sessionId: SessionId, requestedPreset: string, existingPreset: string | undefined);
+agent.d.ts:41: consume(provider: string, model: string, reasoningEffort: string | undefined): boolean;
+agent.d.ts:66: export declare class ApiSessionAgentController {
+agent.d.ts:73: constructor(ctx: Context);
+agent.d.ts:79: resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>;
+agent.d.ts:85: resolveObservedAgent(observation: SessionObservation): Promise<ApiSessionAgentResult>;
+agent.d.ts:95: ensureSession(sessionId: SessionId, cwd: string, checkPersistedIdentity: boolean, presetId?: string): Promise<Agent>;
+agent.d.ts:101: selectionFor(agent: Agent): InstalledSelection;
+agent.d.ts:107: selectForNextRequest(agent: Agent, selection: AgentModelSelection): void;
+agent.d.ts:116: consumeSelection(agent: Agent, provider: string, model: string, reasoningEffort: string | undefined): boolean;
+agent.d.ts:122: presetForSession(session: Session): string | undefined;
+agent.d.ts:135: composeAgent(presetId: string | undefined): Promise<{
+agent.d.ts:150: presetForObservation(observation: SessionObservation): string | undefined;
+assistant-stream.d.ts:9: export declare class SessionAssistantStreamAccumulator {
+assistant-stream.d.ts:19: accept(frame: AssistantStreamFrame, durableCursor: SessionSeqCursor): void;
+assistant-stream.d.ts:24: snapshot(): SessionAssistantStreamBaseline;
+commands.d.ts:6: export declare class SessionCommandController {
+commands.d.ts:15: constructor(ctx: Context, agents: ApiSessionAgentController, defaultCwd: string);
+commands.d.ts:21: create(request: SessionCreateRequest): Promise<SessionCreateValue>;
+commands.d.ts:27: selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue>;
+commands.d.ts:33: rename(request: SessionRenameRequest): Promise<SessionRenameValue>;
+commands.d.ts:41: fork(request: SessionForkRequest): Promise<SessionForkValue>;
+commands.d.ts:47: prompt(request: SessionPromptRequest): Promise<SessionPromptValue>;
+commands.d.ts:54: attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue>;
+commands.d.ts:60: updateQueue(request: SessionUpdateQueueRequest): Promise<SessionUpdateQueueValue>;
+commands.d.ts:66: cancel(request: SessionCancelRequest): SessionCancelValue;
+control.d.ts:5: export declare class SessionControlController {
+control.d.ts:9: constructor(ctx: Context);
+control.d.ts:15: control(signal: AbortSignal): AsyncIterable<SessionControlFrame>;
+file-references.d.ts:13: export declare class SessionFileReferences extends TypertRemoteService {
+file-references.d.ts:16: constructor(ctx: Context);
+file-references.d.ts:24: list(agent: Agent, query: string, signal: AbortSignal): Promise<FileReferenceCandidate[]>;
+history.d.ts:6: export declare class SessionHistoryController {
+history.d.ts:15: constructor(ctx: Context, promote: (observation: SessionObservation) => void);
+history.d.ts:22: page(request: SessionPageRequest, signal: AbortSignal): Promise<SessionPage>;
+history.d.ts:29: follow(request: SessionFollowRequest, signal: AbortSignal): AsyncIterable<SessionFollowFrame>;
+index.d.ts:46: export declare class SessionController extends TypertRemoteService {
+index.d.ts:65: constructor(ctx: Context, config: Config, internals?: SessionControllerInternals);
+index.d.ts:72: resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>;
+index.d.ts:79: inspect(sessionId: SessionId, signal?: AbortSignal): Promise<SessionInspection>;
+index.d.ts:86: list(_request: SessionListRequest, signal: AbortSignal): Promise<SessionListValue>;
+index.d.ts:93: search(request: SessionSearchRequest, signal: AbortSignal): Promise<SessionSearchValue>;
+index.d.ts:99: create(request: SessionCreateRequest): Promise<SessionCreateValue>;
+index.d.ts:105: selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue>;
+index.d.ts:110: initializeDefaultModel(): Promise<void>;
+index.d.ts:115: modelCatalog(): Promise<ModelCatalog>;
+index.d.ts:120: canOpenWorkspacePath(): boolean;
+index.d.ts:125: workspaceDesktop(): {
+index.d.ts:137: openWorkspacePath(request: SessionOpenWorkspacePathRequest, signal: AbortSignal): Promise<SessionOpenWorkspacePathValue>;
+index.d.ts:145: workspacePathApplications(request: {
+index.d.ts:154: rename(request: SessionRenameRequest): Promise<SessionRenameValue>;
+index.d.ts:162: fork(request: SessionForkRequest): Promise<SessionForkValue>;
+index.d.ts:169: prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>;
+index.d.ts:175: attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue>;
+index.d.ts:181: updateQueue(request: SessionUpdateQueueRequest): Promise<SessionUpdateQueueValue>;
+index.d.ts:187: cancel(request: SessionCancelRequest): SessionCancelValue;
+index.d.ts:194: page(request: SessionPageRequest, signal: AbortSignal): Promise<SessionPage>;
+index.d.ts:202: follow(request: SessionFollowRequest, signal: AbortSignal): AsyncIterable<SessionFollowFrame>;
+index.d.ts:209: projections(request: SessionProjectionsRequest, signal: AbortSignal): Promise<SessionProjectionsValue>;
+index.d.ts:216: control(signal: AbortSignal): AsyncIterable<SessionControlFrame>;
+list.d.ts:20: export declare class ApiSessionList {
+list.d.ts:27: constructor(ctx: Context, workSliceMs: number);
+list.d.ts:33: summaryFor(session: Session): SessionSummary;
+list.d.ts:39: list(signal?: AbortSignal): Promise<SessionSummary[]>;
+list.d.ts:47: search(query: string, signal: AbortSignal): Promise<SessionSearchValue>;
+media-references.d.ts:14: apply(ctx: Context): void;
+skill-catalog.d.ts:12: export declare class SessionSkillCatalog extends TypertRemoteService {
+skill-catalog.d.ts:15: constructor(ctx: Context);
+skill-catalog.d.ts:23: list(request: SkillListRequest, signal: AbortSignal): Promise<SkillListValue>;
+transport.d.ts:61: export declare class SessionEventStream extends RemoteJournalStream<SessionJournalPage, SessionHistoryRecord, number, ClientSessionPageRequest, SessionAssistantStreamFrame> {
+transport.d.ts:69: constructor(remote: SessionRemotes, address: SessionAddress, options: SessionEventStreamOptions);
+events.d.ts:65: export declare class MutableSessionEventSource implements SessionEventSource {
+events.d.ts:70: getSnapshot(): SessionEventWindow;
+events.d.ts:76: subscribe(listener: () => void): () => void;
+events.d.ts:82: replace(entries: readonly SessionEventLikeEntry[], hasMore: boolean): void;
+events.d.ts:88: prepend(entries: readonly SessionEventLikeEntry[], hasMore: boolean): void;
+events.d.ts:93: append(entry: SessionEventLikeEntry): void;
+events.d.ts:99: settleAssistant(attemptId: LlmAttemptId, entry?: SessionAssistantSettlementEntry): void;
+session.d.ts:45: abandon(): void;
+session.d.ts:55: faceOf(key: string): ObservableSnapshot<unknown>;
+session.d.ts:73: beginSubmission(input: BeginSubmissionInput): SubmissionHandle;
+session.d.ts:82: prompt(content: PromptContentPart[], mode: 'queue' | 'steer', signal?: AbortSignal, requestId?: SessionRequestId): Promise<RemoteResult<{
+session.d.ts:90: readAttachment(attachmentId: AttachmentIdType): Promise<RemoteResult<{
+session.d.ts:100: updateQueue(itemId: MessageId, action: QueueAction): Promise<RemoteResult<{
+session.d.ts:108: cancel(): Promise<RemoteResult<{
+session.d.ts:117: rename(title: string): Promise<RemoteResult<{
+session.d.ts:127: loadOlder(): Promise<void>;
+session.d.ts:140: loadThrough(seq: SessionSeq): Promise<void>;
+session.d.ts:147: command(line: string): Promise<RemoteResult<{
+sessions.d.ts:29: release(): void;
+sessions.d.ts:52: retain(target: SessionTarget, options: SessionRetainOptions): SessionReference;
+sessions.d.ts:68: retainInfo(id: SessionId): ObservableSnapshot<SessionRetainInfo>;
+sessions.d.ts:80: create(opts?: {
+sessions.d.ts:90: subagentAddress(id: SessionId): SubagentAddress | undefined;
+sessions.d.ts:96: refreshProjections(sessionId: SessionId): Promise<void>;
+sessions.d.ts:101: refresh(): Promise<void>;
+sessions.d.ts:109: search(query: string, signal: AbortSignal): Promise<RemoteResult<{
+sessions.d.ts:124: fork(opts: {
+sessions.d.ts:137: scope(id: SessionId): AgentContext | undefined;
+sessions.d.ts:144: scopeOf(ctx: Context): SessionId | undefined;
+sessions.d.ts:150: sessionOf(ctx: Context): SessionFace | undefined;
+sessions.d.ts:156: binding(id: SessionId): SessionBinding | undefined;
+assistant-stream.d.ts:25: export declare class ClientAssistantStream {
+assistant-stream.d.ts:38: replace(entries: readonly SessionEventLikeEntry[], baseline?: SessionAssistantStreamBaseline): readonly SessionEventLikeEntry[];
+assistant-stream.d.ts:44: acceptDurable(entry: SessionLiveEventEntry): ClientAssistantStreamResult;
+assistant-stream.d.ts:52: acceptFrame(frame: SessionAssistantStreamFrame): ClientAssistantStreamResult;
+manager.d.ts:42: export declare class SessionManager {
+manager.d.ts:80: constructor(remote: SessionRemotes);
+manager.d.ts:86: resolveTarget(target: SessionTarget): SessionId;
+manager.d.ts:93: subagentAddress(sessionId: SessionId): SubagentAddress | undefined;
+manager.d.ts:100: drop(sessionId: SessionId, expected: Session): Promise<void>;
+manager.d.ts:105: dispose(): Promise<void>;
+manager.d.ts:115: get(sessionId: SessionId): Session;
+manager.d.ts:138: refreshProjections(sessionId: SessionId): Promise<void>;
+manager.d.ts:142: refreshList(): Promise<void>;
+manager.d.ts:150: search(query: string, signal: AbortSignal): Promise<RemoteResult<{
+manager.d.ts:161: create(opts?: {
+manager.d.ts:178: fork(opts: {
+manager.d.ts:191: rename(sessionId: SessionId, title: string): Promise<RemoteResult<SessionRenameValue>>;
+manager.d.ts:204: subscribe(listener: () => void): () => void;
+manager.d.ts:209: getListSnapshot(): SessionListSnapshot;
+manager.d.ts:215: projectionValues(sessionId: SessionId): Readonly<Partial<SessionProjectionMap>> | undefined;
+manager.d.ts:220: handleControlFrame(frame: SessionControlFrame): void;
+manager.d.ts:226: handleSessionAdded(summary: SessionSummary): void;
+manager.d.ts:240: handleSessionRemoved(sessionId: SessionId): void;
+manager.d.ts:246: handleSessionStatus(sessionId: SessionId, running: boolean): void;
+manager.d.ts:252: handleSessionActivity(sessionId: SessionId, updatedAt: number): void;
+manager.d.ts:258: handleSessionError(sessionId: SessionId, message: string): void;
+manager.d.ts:265: handleConnected(): void;
+notifier.d.ts:6: export declare class Notifier {
+notifier.d.ts:14: constructor(rebuild: () => void);
+notifier.d.ts:20: subscribe(listener: () => void): () => void;
+notifier.d.ts:22: markDirty(): void;
+notifier.d.ts:24: markFrameDirty(): void;
+notifier.d.ts:29: notifyNow(): void;
+notifier.d.ts:34: ensureFresh(): void;
+projection-store.d.ts:57: export declare class ProjectionValueStore {
+projection-store.d.ts:70: faceOf(key: string): ObservableSnapshot<unknown>;
+projection-store.d.ts:77: get(key: string): unknown;
+projection-store.d.ts:83: seqOf(key: string): SessionSeqCursor | undefined;
+projection-store.d.ts:88: values(): Readonly<Partial<SessionProjectionMap>>;
+projection-store.d.ts:95: subscribeAny(listener: () => void): () => void;
+projection-store.d.ts:102: apply(key: string, value: unknown, seq: SessionSeqCursor): void;
+projection-store.d.ts:111: applyCached(values: Readonly<Record<string, unknown>>): void;
+projection-store.d.ts:122: seed(baseline: ProjectionsBaseline): void;
+projection-store.d.ts:124: clear(): void;
+remotes.d.ts:15: execute(agentId: SessionId, line: string, attachments: readonly CommandSubmitAttachment[], signal?: AbortSignal): Promise<RemoteResult<object | undefined>>;
+remotes.d.ts:19: prompt(request: SubagentPromptRequest, signal?: AbortSignal): Promise<RemoteResult<SubagentPromptReceipt>>;
+remotes.d.ts:20: interruptByParent(childSessionId: SessionId, parentSessionId: SessionId, mode: 'continuable'): Promise<RemoteResult<SubagentInterruptReceipt>>;
+service.d.ts:57: export declare class SessionCreateError extends Error {
+service.d.ts:65: constructor(rpcError: RemoteFailure, requestedSessionId: SessionId | undefined);
+service.d.ts:68: export declare class SessionForkError extends Error {
+service.d.ts:76: constructor(rpcError: RemoteFailure, sourceSessionId: SessionId);
+service.d.ts:89: export declare class ClientSessions implements ISessions {
+service.d.ts:111: constructor(rootCtx: Context, remote: SessionRemotes);
+service.d.ts:112: retain(target: SessionTarget, options: SessionRetainOptions): SessionReference;
+service.d.ts:114: retainInfo(id: SessionId): ObservableSnapshot<SessionRetainInfo>;
+service.d.ts:121: subagentAddress(id: SessionId): SubagentAddress | undefined;
+service.d.ts:126: refreshProjections(sessionId: SessionId): Promise<void>;
+service.d.ts:131: refresh(): Promise<void>;
+service.d.ts:139: search(query: string, signal: AbortSignal): Promise<RemoteResult<{
+service.d.ts:147: handleControlFrame(frame: Parameters<SessionManager['handleControlFrame']>[0]): void;
+service.d.ts:152: handleSessionAdded(summary: Parameters<SessionManager['handleSessionAdded']>[0]): void;
+service.d.ts:157: handleSessionRemoved(sessionId: Parameters<SessionManager['handleSessionRemoved']>[0]): void;
+service.d.ts:162: handleSessionStatus(...args: Parameters<SessionManager['handleSessionStatus']>): void;
+service.d.ts:167: handleSessionActivity(...args: Parameters<SessionManager['handleSessionActivity']>): void;
+service.d.ts:172: handleSessionError(...args: Parameters<SessionManager['handleSessionError']>): void;
+service.d.ts:174: handleConnected(): void;
+service.d.ts:182: create(opts?: {
+service.d.ts:200: fork(opts: {
+service.d.ts:212: scope(id: SessionId): AgentContext | undefined;
+service.d.ts:218: retainAgentScope(id: SessionId): SessionReference;
+service.d.ts:227: scopeOf(ctx: Context): SessionId | undefined;
+service.d.ts:237: sessionOf(ctx: Context): SessionFace | undefined;
+service.d.ts:243: binding(id: SessionId): SessionBinding | undefined;
+session.d.ts:42: export declare class Session implements SessionFace {
+session.d.ts:116: constructor(sessionId: SessionId, remote: SessionRemotes, options?: SessionOptions);
+session.d.ts:125: bindScope(actx: Context): void;
+session.d.ts:127: unbindScope(): void;
+session.d.ts:135: beginSubmission(input: BeginSubmissionInput): SubmissionHandle;
+session.d.ts:144: prompt(content: PromptContentPart[], mode: 'queue' | 'steer', signal?: AbortSignal, requestId?: SessionRequestId): Promise<RemoteResult<{
+session.d.ts:152: readAttachment(attachmentId: AttachmentIdType): Promise<RemoteResult<{
+session.d.ts:157: updateQueue(itemId: MessageId, action: QueueAction): Promise<RemoteResult<{
+session.d.ts:167: cancel(): Promise<RemoteResult<{
+session.d.ts:179: rename(title: string): Promise<RemoteResult<{
+session.d.ts:190: command(line: string): Promise<RemoteResult<{
+session.d.ts:194: open(): Promise<void>;
+session.d.ts:196: loadOlder(): Promise<void>;
+session.d.ts:198: loadThrough(seq: SessionSeq): Promise<void>;
+session.d.ts:202: resync(): Promise<void>;
+session.d.ts:208: subscribe(listener: () => void): () => void;
+session.d.ts:213: getSnapshot(): SessionSnapshot;
+session.d.ts:218: handleRunning(running: boolean): void;
+session.d.ts:225: configureSubagent(address: SubagentAddress | undefined, parentAvailable?: boolean): void;
+session.d.ts:230: handleSubagentParentAvailable(available: boolean): void;
+session.d.ts:239: handleBlank(blank: boolean): void;
+session.d.ts:241: handleRemoved(): void;
+session.d.ts:246: handleAgentError(message: string): void;
+session.d.ts:251: dispose(): Promise<void>;
+

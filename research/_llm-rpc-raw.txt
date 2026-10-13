@@ -1,0 +1,34 @@
+########## dsh-llm LlmRuntime ##########
+71: constructor(message: string, code: string, options?: LlmErrorOptions);
+115: stream(options: GenerateOptions): AsyncIterable<StreamChunk>;
+122: stream(options: GenerateOptions): AsyncIterable<StreamChunk>;
+136: providerInfo(provider: string): LlmProviderInfo;
+142: providerRetryPolicy(_provider: string): ResolvedRetryPolicy | undefined;
+152: imageRequestPricing(_provider: string, _model: string): LlmImageRequestPricing | undefined;
+161: listModels(_provider: string): Promise<readonly LlmModelInfo[]>;
+171: resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo>;
+181: prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall>;
+187: abstract stream(options: GenerateOptions): AsyncIterable<StreamChunk>;
+210: replace(providers: string[]): void;
+230: replace(entries: readonly LlmConfigurableProvider[]): void;
+236: export declare class LlmRuntime extends TypertRemoteService {
+240: constructor(ctx: Context);
+253: registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;
+272: listProviders(): LlmProviderInfo[];
+281: registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;
+286: listConfigurableProviders(): LlmConfigurableProvider[];
+297: registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;
+308: discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;
+317: remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;
+323: providerRetryPolicy(provider: string): ResolvedRetryPolicy;
+333: imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;
+340: fileRequestText(ref: FileAttachmentRef): string;
+350: listModels(provider: string): Promise<LlmModelInfo[]>;
+360: resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;
+374: resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;
+390: prepareCall(config: LlmCallConfig, signal?: AbortSignal, configure?: ConfigureCall): Promise<PreparedLlmCall>;
+416: stream(options: GenerateOptions): AsyncIterable<StreamChunk>;
+
+########## dsh-llm GenerateOptions ##########
+
+########## dsh-client-connection rpc.d.ts (transport) ##########
