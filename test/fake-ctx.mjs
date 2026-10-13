@@ -202,6 +202,23 @@ export function fakeContext({ services = {}, disable = [], storage = true } = {}
     },
   }
 
+  // ---- connection mock（票 #12）：抓出 fetch.register 的路由，测试直接打 route.fetch ----
+  const registeredRoutes = new Map()
+  ctx.registeredRoutes = registeredRoutes
+  services.connection = services.connection ?? {
+    fetch: {
+      register(route) {
+        calls.push(`fetch register ${route.path}`)
+        registeredRoutes.set(route.path, route)
+        return () => {
+          calls.push(`fetch unregister ${route.path}`)
+          registeredRoutes.delete(route.path)
+        }
+      },
+    },
+  }
+  ctx.connection = services.connection
+
   // disable：显式去掉某服务（模拟宿主未挂载，inject 走 skip 分支）
   for (const name of disable) delete services[name]
 

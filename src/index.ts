@@ -27,6 +27,9 @@ import { createAgentTeamsFacade, type AgentTeamsFacade, type AgentTeamsService }
 import { createTaskBoard, type TaskBoard } from './taskboard.js'
 import { createJevJudge, type JevJudge } from './jev.js'
 import { createGroupChatRuntime, type GroupChatRuntime } from './groupchat.js'
+import { createMemoryRepo, type MemoryRepo } from './memory.js'
+import { createTemplateStore, type TemplateStore } from './template.js'
+import { attachHttpEndpoint, type HttpEndpointRuntime } from './endpoint.js'
 
 export const name = 'dsh-bot'
 
@@ -57,6 +60,12 @@ export interface DshBotRuntime {
   readonly teams?: AgentTeamsFacade
   readonly tasks?: TaskBoard
   readonly groups?: GroupChatRuntime
+  /** P3：Bot 记忆仓库（票 #10，异步就绪） */
+  readonly memory?: MemoryRepo
+  /** P3：Bot 模板仓库（票 #11，异步就绪） */
+  readonly templates?: TemplateStore
+  /** P3：HTTP 端点（票 #12，connection 服务存在时挂载） */
+  readonly endpoint?: HttpEndpointRuntime
   readonly mcp: McpBridge
 }
 
@@ -78,6 +87,9 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     teams?: AgentTeamsFacade
     tasks?: TaskBoard
     groups?: GroupChatRuntime
+    memory?: MemoryRepo
+    templates?: TemplateStore
+    endpoint?: HttpEndpointRuntime
   } = {}
   let storeRef: IdentityStore | undefined
 
@@ -108,6 +120,22 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     runtime.roster = roster
     storeRef = store
     runtime.selectedId = await store.getSelectedId()
+    // 票 #10：记忆仓库与身份共用 KV unit 'dsh-bot'（自有表），失败内部降级
+    runtime.memory = await createMemoryRepo(ctx)
+    // 票 #11：模板仓库（依赖 roster/memory/schedules 的 getter，见下）
+    runtime.templates = await createTemplateStore(ctx, {
+      roster,
+      getMemory: () => runtime.memory,
+      getSchedules: () => runtime.schedules,
+      getMcpServerNames: () => mcp.configured.map((c) => c.name),
+    })
+
+    // 票 #12：HTTP 端点（connection 服务缺失时内部降级不注册）
+    runtime.endpoint = attachHttpEndpoint(ctx, {
+      getGroups: () => runtime.groups,
+      getTasks: () => runtime.tasks,
+      getRoster: () => runtime.roster,
+    })
 
     if (ctx.systemPrompt !== undefined) {
       ctx.systemPrompt.section(personaSection(store, { selectedId: () => runtime.selectedId }))
@@ -133,6 +161,9 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     get teams() { return runtime.teams },
     get tasks() { return runtime.tasks },
     get groups() { return runtime.groups },
+    get memory() { return runtime.memory },
+    get templates() { return runtime.templates },
+    get endpoint() { return runtime.endpoint },
     mcp,
     selection: {
       async selectBot(id) {
@@ -171,7 +202,13 @@ function attachP1Runtimes(
   ctx.inject(['tools'], (services) => {
     const roster = runtime.roster as BotRoster | undefined
     if (roster === undefined) return
-    runtime.botTools = attachBotTools(ctx, services.tools as ToolsService, { roster, getSchedules })
+    runtime.botTools = attachBotTools(ctx, services.tools as ToolsService, {
+      roster,
+      getSchedules,
+      getMemory: () => runtime.memory as MemoryRepo | undefined,
+      getSelectedBotId: () => runtime.selectedId as string | undefined,
+      getTemplates: () => runtime.templates as TemplateStore | undefined,
+    })
   })
 
   ctx.inject(['credentials'], (services) => {

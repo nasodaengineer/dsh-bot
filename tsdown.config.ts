@@ -19,6 +19,8 @@ export default defineConfig([
       'src/taskboard.ts',
       'src/jev.ts',
       'src/groupchat.ts',
+      'src/memory.ts',
+      'src/template.ts',
     ],
     outDir: 'lib',
     format: 'esm',
