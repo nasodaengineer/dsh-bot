@@ -7,6 +7,7 @@ export default defineConfig([
   {
     entry: [
       'src/index.ts',
+      'src/kv.ts',
       'src/identity.ts',
       'src/roster.ts',
       'src/persona.ts',
@@ -19,6 +20,8 @@ export default defineConfig([
       'src/taskboard.ts',
       'src/jev.ts',
       'src/groupchat.ts',
+      'src/memory.ts',
+      'src/template.ts',
     ],
     outDir: 'lib',
     format: 'esm',

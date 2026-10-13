@@ -185,7 +185,8 @@ export function fakeContext({ services = {}, disable = [], storage = true } = {}
     async create(sessionId, request) {
       scheduleSeq += 1
       calls.push(`schedule create ${request.title} session=${sessionId}`)
-      const record = { id: `sch-${scheduleSeq}`, kind: 'recurring', title: request.title, prompt: request.prompt }
+      // 完整保留请求字段（timing 等），供 C11 重建断言
+      const record = { id: `sch-${scheduleSeq}`, kind: 'recurring', ...request }
       schedules.push(record)
       return record
     },
@@ -201,6 +202,23 @@ export function fakeContext({ services = {}, disable = [], storage = true } = {}
       return true
     },
   }
+
+  // ---- connection mock（票 #12）：抓出 fetch.register 的路由，测试直接打 route.fetch ----
+  const registeredRoutes = new Map()
+  ctx.registeredRoutes = registeredRoutes
+  services.connection = services.connection ?? {
+    fetch: {
+      register(route) {
+        calls.push(`fetch register ${route.path}`)
+        registeredRoutes.set(route.path, route)
+        return () => {
+          calls.push(`fetch unregister ${route.path}`)
+          registeredRoutes.delete(route.path)
+        }
+      },
+    },
+  }
+  ctx.connection = services.connection
 
   // disable：显式去掉某服务（模拟宿主未挂载，inject 走 skip 分支）
   for (const name of disable) delete services[name]
