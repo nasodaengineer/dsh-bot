@@ -1,0 +1,4 @@
+node_modules/
+.dsh-test-*/
+*.tsbuildinfo
+# lib/ 不忽略：lib/index.js 与 lib/client.js 是发布产物，随源码一起提交（工程纪律 6）
