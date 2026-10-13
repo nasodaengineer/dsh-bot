@@ -77,6 +77,23 @@ test('记忆：journal 记录写/忘动作；forget 删除条目', async () => {
   assert.ok(actions.includes('forget'))
 })
 
+test('C13·journal 裁剪：超过 1000 条时裁掉最旧（最新保留）', async () => {
+  const repo = await createMemoryRepo(fakeContext())
+  // 每 Bot 上限 500 条，用三个 Bot 写 1200 条流水，触发全局裁剪
+  for (const botId of ['bot-a', 'bot-b', 'bot-c']) {
+    for (let i = 0; i < 400; i += 1) {
+      await repo.write(botId, { topic: `t${i}`, text: `内容 ${i}` })
+    }
+  }
+  const a = await repo.journal('bot-a', 10000)
+  const c = await repo.journal('bot-c', 10000)
+  assert.equal(a.length + c.length, 1000 - 400, 'bot-b 的 400 条 + 保留的 600 = 1000 上限，bot-a 最旧的 200 条被裁')
+  assert.equal(a.length, 200, '最旧的 bot-a 被裁掉一半')
+  assert.equal(c.length, 400, '最新的 bot-c 全保留')
+  // 裁掉的是最旧：bot-a 保留的是 seq 最大的那段
+  assert.equal(Math.min(...a.map((r) => r.seq)) > 200, true)
+})
+
 test('记忆：snapshot 保存索引快照（摘要压缩接缝）', async () => {
   const repo = await createMemoryRepo(fakeContext())
   await repo.write('bot-a', { topic: '偏好', text: '回复中文' })

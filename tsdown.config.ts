@@ -7,6 +7,7 @@ export default defineConfig([
   {
     entry: [
       'src/index.ts',
+      'src/kv.ts',
       'src/identity.ts',
       'src/roster.ts',
       'src/persona.ts',

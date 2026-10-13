@@ -104,3 +104,48 @@ test('审批代答：reject 不放行（fail-closed）', async () => {
   assert.equal(rejected.granted, false)
   assert.equal(rejected.outcome, 'rejected')
 })
+
+// ---- 修复轮 A2：隐藏 root Session 载体 ----
+
+test('A2·载体：有 rootSessionId 时建群绑定隐藏 root Session，sessionReady 为真', async () => {
+  const { runtime } = await setup()
+  assert.equal(runtime.groups.sessionReady(), true)
+  const group = await runtime.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  assert.equal(group.sessionId, 'root-session', '群绑定真实隐藏 root Session，不是兜底字符串')
+})
+
+test('A2·载体：无法解析 Session → 建群 fail-visible 拒绝，群聊标记不可用', async () => {
+  const ctx = fakeContext()
+  const { createGroupChatRuntime, createRootSessionCarrier } = await import('../lib/groupchat.js')
+  const store = await (await import('../lib/identity.js')).createIdentityStore(ctx)
+  const groups = createGroupChatRuntime(ctx, {
+    store,
+    ensureSession: createRootSessionCarrier({}), // 无 rootSessionId → undefined
+  })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(groups.sessionReady(), false)
+  await assert.rejects(() => groups.createGroup({ name: 'g', memberIds: ['bot-a'] }), /载体 Session 不可用/)
+  assert.ok(ctx.warnings.some((w) => w.includes('群聊载体 Session 不可用')), 'warn 降级可见')
+})
+
+test('A2·载体：carrier 复用同一 sessionId（ensure 幂等）', async () => {
+  const { createRootSessionCarrier } = await import('../lib/groupchat.js')
+  const carrier = createRootSessionCarrier({ rootSessionId: 'root-x' })
+  assert.equal(await carrier.ensure(), 'root-x')
+  assert.equal(await carrier.ensure(), 'root-x')
+})
+
+// ---- 修复轮 A6：审批真超时 ----
+
+test('A6·审批超时：超时 fail-closed（granted=false）并清待批卡', async () => {
+  const { runtime } = await setup()
+  const group = await runtime.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  const pendingPromise = runtime.groups.requestApproval({ groupId: group.id, toolName: 'slow.thing', timeoutMs: 30 })
+  assert.equal(runtime.groups.listPendingApprovals(group.id).length, 1)
+  const decided = await pendingPromise
+  assert.equal(decided.granted, false, '超时不放行')
+  assert.equal(decided.outcome, 'unavailable')
+  assert.equal(runtime.groups.listPendingApprovals(group.id).length, 0, '待批卡已清')
+  // 超时后再人工应答 → 未知卡报错（waiter 已清）
+  await assert.rejects(() => runtime.groups.answerApproval('apr-timeout', 'allowed-once'), /未知待批卡/)
+})

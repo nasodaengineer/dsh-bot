@@ -1,27 +1,33 @@
 /**
- * 票 #8·群聊运行时（票 #7 裁决 1/3/4）。
+ * 票 #8·群聊运行时（票 #7 裁决 1/3/4；修复轮 A2/A6/A8/B5/B10）。
  *
  * 骨架：群聊 = 隐藏 root Session + 宿主侧自建投递。群是我们数据模型里的实体
  * （KV unit 'dsh-bot' 的 groups/messages/approvals 三张表），Session 只是执行载体。
  * 不伪造工具调用、不在 llm/stream 上动手脚。
  *
+ * A2·Session 载体：群记录的 sessionId 不再是 'group-root' 兜底字符串——由宿主侧
+ * RootSessionCarrier 真实创建/复用一个隐藏 root Session（复用 schedules.ts 已验证的
+ * 强制 root Session 手法：只接受装配方显式传入的 root sessionId）。首次建群时解析并
+ * 缓存（复用）；解析失败 → warn 且群聊标记不可用（createGroup/postMessage 拒绝，
+ * fail-visible，不假装在工作）。
+ *
  * 投递：postMessage → Jev choice 路由（jev.ts）→ 命中成员则把消息投给隐藏 root
  * Session（deliverer 由宿主注入；默认只记日志）。Jev 不可用 → 降级提示写群历史，
  * 不投递、不挂死。
  *
- * 审批代答：隐藏 Session 发起的 approval.request 永远等不到人（GLOSSARY·审批代答）。
- * requestApproval 把请求登记为待批卡并挂起 Promise；answerApproval 由群聊 UI 的
- * 人工应答触发后代答；在待批状态 Promise 不 resolve，fail-closed：只有
- * 'allowed-once' 算放行。
+ * A6·审批代答超时：requestApproval 挂 Waiter 并真正接 setTimeout（可配，默认
+ * 10 分钟）；超时 fail-closed resolve { granted: false, outcome: 'unavailable' }
+ * 并清掉待批卡与 Waiter。审批代答语义（GLOSSARY）：只有 'allowed-once' 算放行，
+ * 判定统一复用 bot-approval.ts 的 isGranted。
  */
-import type { ApprovalOutcome, HostContext, KvUnit } from './types.js'
+import type { ApprovalOutcome, HostContext } from './types.js'
 import type { IdentityStore } from './identity.js'
+import { isGranted } from './bot-approval.js'
+import { openKvUnit } from './kv.js'
 import { routeTurn, type JevJudge, type JevRouteMessage, type JevRouteMember } from './jev.js'
 
-const BACKEND_NAME = 'json'
-const UNIT_NAME = 'dsh-bot'
-const UNIT_VERSION = 1
-const TABLES = ['groups', 'messages', 'approvals'] as const
+/** 审批代答默认超时（A6：默认 10 分钟） */
+export const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000
 
 export interface GroupRecord {
   readonly id: string
@@ -62,36 +68,49 @@ export type GroupDeliverer = (
   delivery: { sessionId: string; responder: string; message: GroupMessage },
 ) => void
 
+/**
+ * A2·隐藏 root Session 载体：宿主侧创建/复用群聊执行 Session。
+ * 与 schedules.ts 同款纪律——只复用装配方显式传入的 root sessionId，不接受子代理 Session。
+ */
+export interface RootSessionCarrier {
+  ensure(): Promise<string | undefined>
+}
+
+export function createRootSessionCarrier(opts: { rootSessionId?: string }): RootSessionCarrier {
+  let cached: string | undefined
+  let resolved = false
+  return {
+    async ensure() {
+      if (!resolved) {
+        resolved = true
+        const id = opts.rootSessionId
+        if (typeof id === 'string' && id.trim() !== '') cached = id
+      }
+      return cached
+    },
+  }
+}
+
 export interface GroupChatRuntime {
   createGroup(input: { name: string; memberIds: readonly string[] }): Promise<GroupRecord>
   listGroups(): Promise<GroupRecord[]>
   history(groupId: string): Promise<GroupMessage[]>
+  /** A2：隐藏 root Session 载体是否已解析可用（不可用时群聊功能拒绝，不假装在工作） */
+  sessionReady(): boolean
   /** 宿主注入投递实现；未注入时投递降级为日志（不丢消息记录） */
   setDeliverer(deliverer: GroupDeliverer): void
   /** 一轮投递：路由 → 投递或降级；返回本轮判定 */
   postMessage(input: { groupId: string; from: string; text: string }): Promise<{
     responder: string
+    confidence?: number
     degraded?: boolean
     reason?: string
     message: GroupMessage
   }>
-  /** 审批代答：登记待批卡，Promise 挂起直到人工应答 */
-  requestApproval(input: { groupId: string; toolName: string; summary?: string }): Promise<{ granted: boolean; outcome: ApprovalOutcome }>
+  /** 审批代答：登记待批卡，Promise 挂起直到人工应答或超时（A6，fail-closed） */
+  requestApproval(input: { groupId: string; toolName: string; summary?: string; timeoutMs?: number }): Promise<{ granted: boolean; outcome: ApprovalOutcome }>
   listPendingApprovals(groupId: string): PendingApproval[]
   answerApproval(id: string, outcome: ApprovalOutcome): Promise<void>
-}
-
-async function openTables(ctx: HostContext): Promise<{ kv: KvUnit | undefined; degraded: boolean }> {
-  try {
-    const backend = ctx.storage?.backend
-    if (backend === undefined) return { kv: undefined, degraded: true }
-    const medium = backend.get(BACKEND_NAME) as { kv?: { open(d: unknown): Promise<KvUnit> } } | undefined
-    const kv = medium?.kv
-    if (kv === undefined) return { kv: undefined, degraded: true }
-    return { kv: await kv.open({ name: UNIT_NAME, version: UNIT_VERSION, tables: [...TABLES], hasGlobal: false }), degraded: false }
-  } catch {
-    return { kv: undefined, degraded: true }
-  }
 }
 
 interface Waiter {
@@ -101,7 +120,7 @@ interface Waiter {
 
 export function createGroupChatRuntime(
   ctx: HostContext,
-  opts: { store: IdentityStore; judge?: JevJudge; sessionId?: string },
+  opts: { store: IdentityStore; judge?: JevJudge; sessionId?: string; ensureSession?: RootSessionCarrier },
 ): GroupChatRuntime {
   const warn = (message: string) => ctx.logger?.warn(`dsh-bot: ${message}`)
   const groups = new Map<string, GroupRecord>()
@@ -110,12 +129,33 @@ export function createGroupChatRuntime(
   const waiters = new Map<string, Waiter>()
   let seq = 0
   let approvalSeq = 0
-  let kv: KvUnit | undefined
   let kvReady = false
+  let kv: Awaited<ReturnType<typeof openKvUnit>>['kv'] | undefined
   let deliverer: GroupDeliverer | undefined
 
+  // A2：隐藏 root Session 载体（运行时创建即解析并缓存，之后复用）
+  let carrierSessionId: string | undefined
+  let carrierResolved = false
+  async function resolveSession(): Promise<string | undefined> {
+    if (!carrierResolved) {
+      carrierResolved = true
+      try {
+        carrierSessionId = (await opts.ensureSession?.ensure()) ?? opts.sessionId
+      } catch (error) {
+        warn(`群聊载体 Session 解析失败：${String(error)}`)
+        carrierSessionId = undefined
+      }
+      if (carrierSessionId === undefined) {
+        warn('群聊载体 Session 不可用（未配置 rootSessionId 且无创建路径），群聊功能拒绝服务，不假装在工作')
+      }
+    }
+    return carrierSessionId
+  }
+  // 装配即解析（sessionReady 可同步观察），失败走上面的 warn 降级
+  void resolveSession()
+
   void (async () => {
-    const opened = await openTables(ctx)
+    const opened = await openKvUnit(ctx)
     if (opened.kv === undefined) {
       warn('群聊状态打开 KV unit 失败，降级为进程内存储，重启即丢')
       return
@@ -146,12 +186,16 @@ export function createGroupChatRuntime(
 
   return {
     async createGroup(input) {
+      const sessionId = await resolveSession()
+      if (sessionId === undefined) {
+        throw new Error('dsh-bot: 群聊载体 Session 不可用，无法建群（fail-visible，不假装在工作）')
+      }
       seq += 1
       const group: GroupRecord = {
         id: `grp-${Date.now().toString(36)}-${seq}`,
         name: input.name,
         memberIds: [...input.memberIds],
-        sessionId: opts.sessionId ?? 'group-root',
+        sessionId,
         createdAt: new Date().toISOString(),
       }
       groups.set(group.id, group)
@@ -165,6 +209,10 @@ export function createGroupChatRuntime(
 
     async history(groupId) {
       return [...(messages.get(groupId) ?? [])]
+    },
+
+    sessionReady() {
+      return carrierResolved && carrierSessionId !== undefined
     },
 
     setDeliverer(fn) {
@@ -234,13 +282,21 @@ export function createGroupChatRuntime(
         createdAt: new Date().toISOString(),
       }
       pending.set(card.id, card)
+      const timeoutMs = typeof input.timeoutMs === 'number' && input.timeoutMs > 0 ? input.timeoutMs : APPROVAL_TIMEOUT_MS
       return new Promise((resolve) => {
-        waiters.set(card.id, {
-          resolve: (outcome) => {
-            pending.delete(card.id)
-            resolve({ granted: outcome === 'allowed-once', outcome })
-          },
-        })
+        const settle = (outcome: ApprovalOutcome) => {
+          pending.delete(card.id)
+          resolve({ granted: isGranted(outcome), outcome })
+        }
+        const waiter: Waiter = { resolve: settle }
+        // A6：真超时——超时 fail-closed 放行=false，并清掉待批卡与 Waiter
+        waiter.timer = setTimeout(() => {
+          if (waiters.get(card.id) !== waiter) return
+          waiters.delete(card.id)
+          warn(`待批卡 '${card.id}' 超时（${timeoutMs}ms），fail-closed 不放行`)
+          settle('unavailable')
+        }, timeoutMs)
+        waiters.set(card.id, waiter)
       })
     },
 

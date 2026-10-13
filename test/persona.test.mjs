@@ -20,11 +20,16 @@ test('人格段：Name/Title/Description 拼进提示词文本', async (t) => {
   assert.match(text, /负责调研/)
 })
 
-test('人格段：选中 Bot 不存在时回退到第一个 Bot', async (t) => {
+test('人格段：未选中 Bot 时不注入 + warn（B7：不再静默回退名册第一个）', async (t) => {
   const { store } = await setup()
   await store.put({ id: 'bot-alice', name: 'Alice', title: '研究员', description: '负责调研' })
-  const section = personaSection(store, { selectedId: () => undefined })
-  assert.match(section.text({}), /Alice/)
+  const warns = []
+  const section = personaSection(store, { selectedId: () => undefined }, { warn: (m) => warns.push(m) })
+  assert.equal(section.text({}), '')
+  assert.equal(warns.length, 1)
+  // warn 只发一次
+  section.text({})
+  assert.equal(warns.length, 1)
 })
 
 test('人格段：名册为空时文本为空字符串（不产生空段）', async (t) => {

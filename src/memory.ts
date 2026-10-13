@@ -11,11 +11,10 @@
  * KV 缺失时降级进程内并 warn（与 identity.ts 同款降级路径）。
  */
 import type { HostContext, KvUnit } from './types.js'
+import { openKvUnit } from './kv.js'
 
-const BACKEND_NAME = 'json'
-const UNIT_NAME = 'dsh-bot'
-const UNIT_VERSION = 1
-const TABLES = ['memory', 'memory_journal', 'memory_snapshots'] as const
+/** journal 流水条数上限（C13：超出裁掉最旧；摘要压缩仍留接缝不做） */
+export const MAX_JOURNAL_RECORDS = 1000
 
 /** 单条记忆体积上限（K 体积上限策略：超限拒绝，摘要压缩走 snapshot 接缝） */
 export const MAX_ENTRY_CHARS = 8 * 1024
@@ -64,18 +63,9 @@ export interface MemoryRepo {
   snapshot(botId: string): Promise<SnapshotRecord>
 }
 
-/** 解析 KV unit；失败返回 undefined（调用方降级进程内）。 */
-async function openUnit(ctx: HostContext): Promise<KvUnit | undefined> {
-  const backend = ctx.storage?.backend
-  if (backend === undefined) return undefined
-  try {
-    const medium = backend.get(BACKEND_NAME) as { kv?: { open(d: unknown): Promise<KvUnit> } } | undefined
-    const kv = medium?.kv
-    if (kv === undefined) return undefined
-    return await kv.open({ name: UNIT_NAME, version: UNIT_VERSION, tables: [...TABLES], hasGlobal: false })
-  } catch {
-    return undefined
-  }
+/** 解析 KV unit（B5：走共享 openKvUnit）；失败返回 undefined（调用方降级进程内）。 */
+async function openUnit(ctx: HostContext) {
+  return (await openKvUnit(ctx)).kv
 }
 
 export async function createMemoryRepo(ctx: HostContext): Promise<MemoryRepo> {
@@ -153,6 +143,21 @@ export async function createMemoryRepo(ctx: HostContext): Promise<MemoryRepo> {
     }
     journalRows.set(String(record.seq), record)
     if (kv !== undefined) await kv.putRecord('memory_journal', String(record.seq), record)
+    // C13：流水按条数上限裁掉最旧（摘要压缩不做，留 snapshot 接缝）
+    if (journalRows.size > MAX_JOURNAL_RECORDS) {
+      let oldestKey: string | undefined
+      let oldestSeq = Number.POSITIVE_INFINITY
+      for (const [key, row] of journalRows) {
+        if (row.seq < oldestSeq) {
+          oldestSeq = row.seq
+          oldestKey = key
+        }
+      }
+      if (oldestKey !== undefined) {
+        journalRows.delete(oldestKey)
+        if (kv !== undefined) await kv.deleteRecord('memory_journal', oldestKey)
+      }
+    }
   }
 
   return {

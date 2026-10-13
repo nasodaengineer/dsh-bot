@@ -76,6 +76,36 @@ test('模板：未知 Bot 导出、未知模板导入都报错不抛穿由工具
   await assert.rejects(() => runtime.templates.importTemplate('nope', {}), /未知模板/)
 })
 
+// ---- 修复轮 C11：完整例程序列化 ----
+
+test('C11·模板导出保存完整 ScheduleCreateRequest（timing+prompt 原样），导入按原样重建', async () => {
+  const { runtime } = await setup()
+  const created = await runtime.schedules.create({ title: '日报', prompt: '把今日构建日志整理成日报', every_seconds: 3600 })
+  const tpl = await runtime.templates.exportTemplate('bot-a', { includeMemory: false })
+  assert.equal(tpl.skills.schedules.length, 1)
+  const saved = tpl.skills.schedules[0]
+  assert.equal(saved.title, '日报')
+  assert.equal(saved.prompt, '把今日构建日志整理成日报', 'prompt 原样保存，不再是占位文本')
+  assert.equal(saved.every_seconds, 3600, 'timing 原样保存')
+  assert.equal(saved.promptTruncated, undefined)
+  const result = await runtime.templates.importTemplate(tpl.id, {})
+  assert.equal(result.restoredSchedules, 1)
+  const list = await runtime.schedules.list()
+  const rebuilt = list.find((s) => s.title === '日报' && s.id !== created.id)
+  assert.ok(rebuilt, '重建出例程')
+  assert.equal(rebuilt.prompt, '把今日构建日志整理成日报', '重建用原 prompt（无占位符）')
+  assert.equal(rebuilt.every_seconds, 3600, '重建保留 timing（无 86_400 硬编码）')
+})
+
+test('C11·超长 prompt 截断并标记 promptTruncated', async () => {
+  const { runtime } = await setup()
+  await runtime.schedules.create({ title: '长例程', prompt: 'x'.repeat(3000), every_seconds: 60 })
+  const tpl = await runtime.templates.exportTemplate('bot-a', { includeMemory: false })
+  const saved = tpl.skills.schedules[0]
+  assert.equal(saved.prompt.length, 2000)
+  assert.equal(saved.promptTruncated, true)
+})
+
 test('模板：重启（同一 KV 后端重开）后模板还在', async () => {
   const { ctx, runtime } = await setup()
   const tpl = await runtime.templates.exportTemplate('bot-a', { includeMemory: true })

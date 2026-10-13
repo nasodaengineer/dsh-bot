@@ -19,6 +19,8 @@ export interface BotSchedulesRuntime {
   /** 恢复 = 按记住的请求重建（新 id） */
   resume(id: string): Promise<ScheduleRecord | undefined>
   delete(id: string): Promise<boolean>
+  /** 完整创建请求（修复轮 C11：模板导出要序列化完整 timing+prompt，不只是标题） */
+  requests(): readonly ScheduleCreateRequest[]
 }
 
 const TIMING_FIELDS = ['after_seconds', 'at', 'every_seconds', 'daily', 'weekly', 'cron'] as const
@@ -94,6 +96,10 @@ export function attachBotSchedules(
       const existed = known.delete(id)
       paused.delete(id)
       return (await schedule.delete({ sessionId: rootSessionId, id })) || existed
+    },
+
+    requests() {
+      return [...known.values()]
     },
   }
 }

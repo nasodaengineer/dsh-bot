@@ -26,7 +26,7 @@ import { attachBotSchedules, type BotSchedulesRuntime } from './schedules.js'
 import { createAgentTeamsFacade, type AgentTeamsFacade, type AgentTeamsService } from './agent-teams.js'
 import { createTaskBoard, type TaskBoard } from './taskboard.js'
 import { createJevJudge, type JevJudge } from './jev.js'
-import { createGroupChatRuntime, type GroupChatRuntime } from './groupchat.js'
+import { createGroupChatRuntime, createRootSessionCarrier, type GroupChatRuntime } from './groupchat.js'
 import { createMemoryRepo, type MemoryRepo } from './memory.js'
 import { createTemplateStore, type TemplateStore } from './template.js'
 import { attachHttpEndpoint, type HttpEndpointRuntime } from './endpoint.js'
@@ -99,18 +99,18 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
   function handleAgentCreated(payload: AgentEventPayload): void {
     const agent = payload.agent
     if (agent?.inject === undefined) return
-    // 路径锚纪律：引用 cwd 一律 agent.session?.header?.cwd
-    void agent.session?.header?.cwd
     const selected = runtime.selectedId
+    // A1：IIFE 内部任何拒绝都要就地捕获，不能逃逸外层 try/catch（同步捕获管不到异步）
     void (async () => {
       const roster = runtime.roster
       if (roster === undefined) return
       const bots = await roster.list()
       const bot = selected !== undefined ? bots.find((b) => b.id === selected) : undefined
-      const chosen = bot ?? bots[0]
-      if (chosen === undefined) return
-      agent.inject?.(`[dsh-bot] 当前 Bot：${chosen.name}（${chosen.title}）\n${chosen.description}`)
-    })()
+      if (bot === undefined) return
+      agent.inject?.(`[dsh-bot] 当前 Bot：${bot.name}（${bot.title}）\n${bot.description}`)
+    })().catch((error) => {
+      ctx.logger?.warn(`dsh-bot: agent/created 异步注入失败：${String(error)}`)
+    })
   }
 
   // 异步装配：cordis 的 apply 可以返回 Promise；注册动作都在 Promise 内完成。
@@ -138,13 +138,15 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     })
 
     if (ctx.systemPrompt !== undefined) {
-      ctx.systemPrompt.section(personaSection(store, { selectedId: () => runtime.selectedId }))
+      ctx.systemPrompt.section(personaSection(store, { selectedId: () => runtime.selectedId }, {
+        warn: (message) => ctx.logger?.warn(message),
+      }))
     } else {
       ctx.logger?.warn('dsh-bot: ctx.systemPrompt 服务缺失，人格段不注入')
     }
 
     // P1 功能面：运行期可选依赖，到齐即挂，掉了重挂。
-    attachP1Runtimes(ctx, runtime, store, options)
+    attachRuntimes(ctx, runtime, store, options)
   })().catch((error) => {
     ctx.logger?.warn(`dsh-bot: 初始化失败：${String(error)}`)
   })
@@ -184,7 +186,7 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
 }
 
 /** P1/P2 运行时装配：ctx.inject 订阅（见文件头注释的取舍理由） */
-function attachP1Runtimes(
+function attachRuntimes(
   ctx: HostContext,
   runtime: Record<string, unknown>,
   store: IdentityStore,
@@ -235,7 +237,7 @@ function attachP1Runtimes(
   })
 
   // P2：ctx.agentTeams（dsh-experimental-agent-team）。门面只做 caller 透传；
-  // 本函数由异步装配在 store 就绪后调用（attachP1Runtimes 的 store 参数）。
+  // 本函数由异步装配在 store 就绪后调用（attachRuntimes 的 store 参数）。
   ctx.inject(['agentTeams'], (services) => {
     const teams = createAgentTeamsFacade(services.agentTeams as AgentTeamsService)
     runtime.teams = teams
@@ -247,10 +249,11 @@ function attachP1Runtimes(
     if (judge === undefined) {
       ctx.logger?.warn('dsh-bot: 未配置 typesafe.apiKey/judge，群聊路由走降级（本轮无人响应提示）')
     }
+    // A2：群聊载体——宿主侧真实创建/复用隐藏 root Session（schedules.ts 同款强制 root 手法）
     runtime.groups = createGroupChatRuntime(ctx, {
       store,
       judge,
-      sessionId: options.rootSessionId,
+      ensureSession: createRootSessionCarrier({ rootSessionId: options.rootSessionId }),
     })
   })
 }

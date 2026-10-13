@@ -11,8 +11,13 @@ export const PERSONA_SECTION_NAME = 'dsh-bot:persona'
 export const PERSONA_SECTION_ORDER = 100
 
 export interface PersonaSelection {
-  /** 当前选中的 Bot id；undefined 时回退到名册第一个 Bot */
+  /** 当前选中的 Bot id；undefined 时不注入（B7：不静默回退名册第一个） */
   selectedId(): string | undefined
+}
+
+export interface PersonaSectionOptions {
+  /** B7：未选中 Bot 时 warn 一次，让人格缺位可见 */
+  warn?(message: string): unknown
 }
 
 function renderBot(identity: BotIdentity): string {
@@ -22,14 +27,23 @@ function renderBot(identity: BotIdentity): string {
   return lines.join('\n')
 }
 
-export function personaSection(store: IdentityStore, selection: PersonaSelection): PromptSection {
+export function personaSection(store: IdentityStore, selection: PersonaSelection, options: PersonaSectionOptions = {}): PromptSection {
+  let warnedNoSelection = false
   return {
     name: PERSONA_SECTION_NAME,
     order: PERSONA_SECTION_ORDER,
     text: () => {
       // section provider 是同步求值的（AssembleContext），所以读同步缓存 listSync
+      const selectedId = selection.selectedId()
+      if (selectedId === undefined) {
+        if (!warnedNoSelection) {
+          warnedNoSelection = true
+          options.warn?.('dsh-bot: 未选中 Bot，人格段不注入（不再静默回退名册第一个）')
+        }
+        return ''
+      }
       const bots = store.listSync()
-      const picked = bots.find((bot) => bot.id === selection.selectedId()) ?? bots[0]
+      const picked = bots.find((bot) => bot.id === selectedId)
       return picked === undefined ? '' : renderBot(picked)
     },
   }

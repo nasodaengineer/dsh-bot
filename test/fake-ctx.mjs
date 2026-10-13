@@ -185,7 +185,8 @@ export function fakeContext({ services = {}, disable = [], storage = true } = {}
     async create(sessionId, request) {
       scheduleSeq += 1
       calls.push(`schedule create ${request.title} session=${sessionId}`)
-      const record = { id: `sch-${scheduleSeq}`, kind: 'recurring', title: request.title, prompt: request.prompt }
+      // 完整保留请求字段（timing 等），供 C11 重建断言
+      const record = { id: `sch-${scheduleSeq}`, kind: 'recurring', ...request }
       schedules.push(record)
       return record
     },

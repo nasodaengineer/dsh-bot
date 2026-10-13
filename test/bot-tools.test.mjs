@@ -7,7 +7,7 @@ import { assertMcpServerName, createMcpBridge, isValidMcpServerName, mcpToolName
 
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
-test('bot_* 工具注册：十三个工具名、可注销', async () => {
+test('bot_* 工具注册：十五个工具名、可注销', async () => {
   const ctx = fakeContext()
   const runtime = apply(ctx, { rootSessionId: 'root-1' })
   await flush()
@@ -23,13 +23,15 @@ test('bot_* 工具注册：十三个工具名、可注销', async () => {
     'bot_schedule_create',
     'bot_schedule_delete',
     'bot_schedule_list',
+    'bot_schedule_pause',
+    'bot_schedule_resume',
     'bot_template_export',
     'bot_template_import',
     'bot_template_list',
   ])
   runtime.botTools.dispose()
   assert.deepEqual([...runtime.botTools.names], [])
-  assert.ok(ctx.calls.filter((c) => c.startsWith('tool dispose ')).length === 13)
+  assert.ok(ctx.calls.filter((c) => c.startsWith('tool dispose ')).length === 15)
 })
 
 test('bot_schedule_create：六形态之一（cron）转 schedule.create（root Session）', async () => {
@@ -66,6 +68,32 @@ test('bot_schedule_delete / bot_schedule_list / bot_roster_list', async () => {
   assert.deepEqual(list.schedules, [])
   const roster = await ctx.registeredTools.get('bot_roster_list').execute({})
   assert.deepEqual(roster.bots, [{ id: 'b1', name: '小助手', title: '助理', description: '测试人格' }])
+})
+
+test('bot_schedule_pause / bot_schedule_resume：暂停记请求+删宿主，恢复重建（A3）', async () => {
+  const ctx = fakeContext()
+  const runtime = apply(ctx, { rootSessionId: 'root-1' })
+  await flush()
+  await runtime.roster.create({ id: 'b1', name: '小助手', title: '助理', description: '测试人格' })
+  const create = await ctx.registeredTools.get('bot_schedule_create').execute({ title: '日报', prompt: '写日报', every_seconds: 60 })
+  const pause = await ctx.registeredTools.get('bot_schedule_pause').execute({ id: create.id })
+  assert.deepEqual(pause, { paused: true })
+  assert.equal(ctx.schedules.length, 0, '宿主侧已删除')
+  const resume = await ctx.registeredTools.get('bot_schedule_resume').execute({ id: create.id })
+  assert.ok(resume.record, '恢复返回新 record')
+  assert.notEqual(resume.record.id, create.id, 'record id 已变')
+  assert.equal(ctx.schedules.length, 1)
+  // 不可暂停：未知 id → 折叠为 {error}
+  const badPause = await ctx.registeredTools.get('bot_schedule_pause').execute({ id: 'nope' })
+  assert.ok(badPause.error.includes('不可暂停'))
+  const badResume = await ctx.registeredTools.get('bot_schedule_resume').execute({ id: 'nope' })
+  assert.ok(badResume.error.includes('不可恢复'))
+  // schedule 未挂载降级
+  const ctx2 = fakeContext({ disable: ['schedule'] })
+  apply(ctx2, { rootSessionId: 'root-1' })
+  await flush()
+  const pausedOff = await ctx2.registeredTools.get('bot_schedule_pause').execute({ id: 'x' })
+  assert.ok(pausedOff.error.includes('schedule 服务未挂载'))
 })
 
 test('schedule 未挂载（宿主没开 Automation）时工具降级为提示', async () => {

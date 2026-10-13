@@ -167,6 +167,39 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
       }),
   })
 
+  // ---- 修复轮 A3：bot_schedule_pause / bot_schedule_resume（schedules.ts 已有语义）----
+  register({
+    name: 'bot_schedule_pause',
+    description: '暂停一个 Bot 例程（记住请求并从宿主删除；恢复用 bot_schedule_resume，record id 会变）',
+    parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+    execute: (args) =>
+      safeExecute(async () => {
+        const schedules = deps.getSchedules()
+        if (schedules === undefined) return { error: 'dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）' }
+        const id = (args as { id?: string }).id
+        if (typeof id !== 'string' || id === '') return { error: 'dsh-bot: 缺少例程 id' }
+        const paused = await schedules.pause(id)
+        return paused === true ? { paused: true } : { error: `dsh-bot: 例程 '${id}' 不可暂停（未知或非本插件创建的例程）` }
+      }),
+  })
+
+  register({
+    name: 'bot_schedule_resume',
+    description: '恢复一个已暂停的 Bot 例程（按记住的请求重建，返回新 record id）',
+    parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+    execute: (args) =>
+      safeExecute(async () => {
+        const schedules = deps.getSchedules()
+        if (schedules === undefined) return { error: 'dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）' }
+        const id = (args as { id?: string }).id
+        if (typeof id !== 'string' || id === '') return { error: 'dsh-bot: 缺少例程 id' }
+        const record = await schedules.resume(id)
+        return record === undefined
+          ? { error: `dsh-bot: 例程 '${id}' 不可恢复（没有暂停记录）` }
+          : { record, note: '恢复后的例程 record id 已变，旧 id 失效' }
+      }),
+  })
+
   // ---- 票 #10：bot_memory_* 六件 ----
   const getMemory = (): MemoryRepo | undefined => {
     const repo = deps.getMemory()

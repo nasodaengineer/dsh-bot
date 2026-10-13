@@ -47,6 +47,13 @@ const json = (status: number, body: unknown): Response =>
 
 const caller = 'http-endpoint'
 
+/** A4·from 白名单：1–64 个字符，仅限字母/数字/中文/空格和 - _ . · @ */
+const FROM_PATTERN = /^[\p{Script=Han}a-zA-Z0-9\s\-_.·@]{1,64}$/u
+
+export function isValidFrom(from: unknown): from is string {
+  return typeof from === 'string' && FROM_PATTERN.test(from)
+}
+
 export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): HttpEndpointRuntime {
   const connection = (ctx as HostContext & { connection?: { fetch: { register(route: FetchRoute): () => void } } }).connection
   if (connection === undefined) {
@@ -59,16 +66,54 @@ export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): Ht
       case 'group.message': {
         const groups = deps.getGroups()
         if (groups === undefined) return { status: 503, body: { ok: false, error: '群聊运行时未就绪' } }
+        // A2：载体 Session 不可用时群聊拒绝服务，不假装在工作
+        if (!groups.sessionReady()) return { status: 503, body: { ok: false, error: '群聊载体 Session 不可用' } }
         const p = payload as { groupId?: unknown; from?: unknown; text?: unknown } | undefined
         if (typeof p?.groupId !== 'string' || typeof p?.text !== 'string') {
           return { status: 400, body: { ok: false, error: 'groupId 与 text 必填' } }
         }
+        // A4·from 白名单校验：非法直接 400，不入群史
+        if (!isValidFrom(p.from)) {
+          return { status: 400, body: { ok: false, error: 'from 非法（1–64 字符，仅字母/数字/中文/空格/-_·.@）' } }
+        }
         const result = await groups.postMessage({
           groupId: p.groupId,
-          from: typeof p.from === 'string' ? p.from : '外部调用',
+          from: p.from,
           text: p.text,
         })
         return { status: 200, body: { ok: true, result } }
+      }
+      case 'group.messages': {
+        // C12·群面板消息读取（只读）
+        const groups = deps.getGroups()
+        if (groups === undefined) return { status: 503, body: { ok: false, error: '群聊运行时未就绪' } }
+        const groupId = (payload as { groupId?: unknown } | undefined)?.groupId
+        if (typeof groupId !== 'string') return { status: 400, body: { ok: false, error: 'groupId 必填' } }
+        const exists = (await groups.listGroups()).some((g) => g.id === groupId)
+        if (!exists) return { status: 404, body: { ok: false, error: `群 '${groupId}' 不存在` } }
+        return { status: 200, body: { ok: true, result: { messages: await groups.history(groupId) } } }
+      }
+      case 'group.approvals': {
+        // C12·待批卡读取（只读）
+        const groups = deps.getGroups()
+        if (groups === undefined) return { status: 503, body: { ok: false, error: '群聊运行时未就绪' } }
+        const groupId = (payload as { groupId?: unknown } | undefined)?.groupId
+        if (typeof groupId !== 'string') return { status: 400, body: { ok: false, error: 'groupId 必填' } }
+        return { status: 200, body: { ok: true, result: { approvals: groups.listPendingApprovals(groupId) } } }
+      }
+      case 'group.approve':
+      case 'group.reject': {
+        // C12·宿主代答（人工批准/拒绝 → answerApproval）
+        const groups = deps.getGroups()
+        if (groups === undefined) return { status: 503, body: { ok: false, error: '群聊运行时未就绪' } }
+        const id = (payload as { id?: unknown } | undefined)?.id
+        if (typeof id !== 'string' || id === '') return { status: 400, body: { ok: false, error: 'id 必填' } }
+        try {
+          await groups.answerApproval(id, endpoint === 'group.approve' ? 'allowed-once' : 'rejected')
+        } catch (error) {
+          return { status: 404, body: { ok: false, error: String(error instanceof Error ? error.message : error) } }
+        }
+        return { status: 200, body: { ok: true, result: { id, granted: endpoint === 'group.approve' } } }
       }
       case 'group.list': {
         const groups = deps.getGroups()

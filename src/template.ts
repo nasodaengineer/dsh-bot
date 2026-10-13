@@ -8,15 +8,46 @@
  *
  * 存储：KV unit 'dsh-bot' 的 templates 表（与 #3/#7/#8/#10 一致）。
  */
-import type { HostContext, KvUnit, BotIdentity } from './types.js'
+import type { HostContext, BotIdentity, ScheduleCreateRequest } from './types.js'
 import type { BotRoster } from './roster.js'
 import type { MemoryRepo } from './memory.js'
 import type { BotSchedulesRuntime } from './schedules.js'
+import { openKvUnit } from './kv.js'
 
-const BACKEND_NAME = 'json'
-const UNIT_NAME = 'dsh-bot'
-const UNIT_VERSION = 1
 const TABLE_NAME = 'templates'
+
+/** C11：例程 prompt 序列化上限（超长截断并标记，导入按原样重建截断版） */
+export const MAX_SCHEDULE_PROMPT_CHARS = 2000
+
+export interface SerializedScheduleRequest {
+  readonly title: string
+  readonly prompt: string
+  readonly promptTruncated?: boolean
+  readonly after_seconds?: number
+  readonly at?: ScheduleCreateRequest['at']
+  readonly every_seconds?: number
+  readonly daily?: ScheduleCreateRequest['daily']
+  readonly weekly?: ScheduleCreateRequest['weekly']
+  readonly cron?: ScheduleCreateRequest['cron']
+}
+
+/** C11：ScheduleCreateRequest → 可序列化例程（完整 timing+prompt；超长 prompt 截断并标记） */
+export function serializeScheduleRequest(request: ScheduleCreateRequest): SerializedScheduleRequest {
+  const prompt = request.prompt.length > MAX_SCHEDULE_PROMPT_CHARS
+    ? request.prompt.slice(0, MAX_SCHEDULE_PROMPT_CHARS)
+    : request.prompt
+  return {
+    title: request.title,
+    prompt,
+    ...(request.prompt.length > MAX_SCHEDULE_PROMPT_CHARS ? { promptTruncated: true } : {}),
+    ...(request.after_seconds !== undefined ? { after_seconds: request.after_seconds } : {}),
+    ...(request.at !== undefined ? { at: request.at } : {}),
+    ...(request.every_seconds !== undefined ? { every_seconds: request.every_seconds } : {}),
+    ...(request.daily !== undefined ? { daily: request.daily } : {}),
+    ...(request.weekly !== undefined ? { weekly: request.weekly } : {}),
+    ...(request.cron !== undefined ? { cron: request.cron } : {}),
+  }
+}
 
 export interface TemplateRecord {
   readonly id: string
@@ -25,8 +56,14 @@ export interface TemplateRecord {
   readonly sourceBotId: string
   /** 人格：派生 Bot 时的身份字段 */
   readonly persona: { name: string; title: string; description: string; color?: string }
-  /** 技能：可重建的例程（标题清单，导入时重建）+ 描述性 MCP server 名（不打包，留接缝） */
-  readonly skills: { scheduleTitles: readonly string[]; mcpServerNames: readonly string[] }
+  /** 技能：可重建的例程（C11：完整创建请求序列化）+ 描述性 MCP server 名（不打包，留接缝） */
+  readonly skills: {
+    /** 兼容字段：标题清单 */
+    readonly scheduleTitles: readonly string[]
+    /** C11：完整例程创建请求（timing+prompt），导入原样重建 */
+    readonly schedules: readonly SerializedScheduleRequest[]
+    readonly mcpServerNames: readonly string[]
+  }
   /** 记忆：includeMemory=false 时为空数组 */
   readonly includeMemory: boolean
   readonly memory: readonly { topic: string; text: string }[]
@@ -53,17 +90,8 @@ export interface TemplateStore {
   get(templateId: string): Promise<TemplateRecord | undefined>
 }
 
-async function openTables(ctx: HostContext): Promise<KvUnit | undefined> {
-  const backend = ctx.storage?.backend
-  if (backend === undefined) return undefined
-  try {
-    const medium = backend.get(BACKEND_NAME) as { kv?: { open(d: unknown): Promise<KvUnit> } } | undefined
-    const kv = medium?.kv
-    if (kv === undefined) return undefined
-    return await kv.open({ name: UNIT_NAME, version: UNIT_VERSION, tables: [TABLE_NAME], hasGlobal: false })
-  } catch {
-    return undefined
-  }
+async function openTables(ctx: HostContext) {
+  return (await openKvUnit(ctx)).kv
 }
 
 function slugOf(name: string): string {
@@ -72,7 +100,7 @@ function slugOf(name: string): string {
 
 export async function createTemplateStore(ctx: HostContext, deps: TemplateStoreDeps): Promise<TemplateStore> {
   const warn = (message: string) => ctx.logger?.warn(`dsh-bot: ${message}`)
-  let kv: KvUnit | undefined
+  let kv: Awaited<ReturnType<typeof openTables>>
   try {
     kv = await openTables(ctx)
   } catch {
@@ -110,9 +138,14 @@ export async function createTemplateStore(ctx: HostContext, deps: TemplateStoreD
         else for (const entry of await repo.list(botId)) memoryEntries.push({ topic: entry.topic, text: entry.text })
       }
       const scheduleTitles: string[] = []
+      const scheduleRequests: SerializedScheduleRequest[] = []
       const schedules = deps.getSchedules()
       if (schedules !== undefined) {
-        for (const record of await schedules.list()) scheduleTitles.push(record.title)
+        // C11：保存每个例程的完整 ScheduleCreateRequest（timing+prompt）
+        for (const request of schedules.requests()) {
+          scheduleRequests.push(serializeScheduleRequest(request))
+          scheduleTitles.push(request.title)
+        }
       }
       const record: TemplateRecord = {
         id: `tpl-${Date.now().toString(36)}-${tplSeq}`,
@@ -120,7 +153,7 @@ export async function createTemplateStore(ctx: HostContext, deps: TemplateStoreD
         description: `从 Bot '${botId}' 导出的模板：${bot.title}`,
         sourceBotId: botId,
         persona: { name: bot.name, title: bot.title, description: bot.description, color: bot.color },
-        skills: { scheduleTitles, mcpServerNames: [...deps.getMcpServerNames()] },
+        skills: { scheduleTitles, schedules: scheduleRequests, mcpServerNames: [...deps.getMcpServerNames()] },
         includeMemory: options.includeMemory,
         memory: memoryEntries,
         createdAt: new Date().toISOString(),
@@ -162,14 +195,13 @@ export async function createTemplateStore(ctx: HostContext, deps: TemplateStoreD
       if (schedules === undefined) {
         if (tpl.skills.scheduleTitles.length > 0) warn('schedule 服务未挂载，模板例程未重建（接缝：宿主开 Automation 后可用 bot_schedule_create 手工重建）')
       } else {
-        // 例程 prompt 不在模板清单里（清单只存标题），重建用占位 prompt 并留接缝：
-        // 后续可把完整 ScheduleCreateRequest 序列化进模板。
-        for (const title of tpl.skills.scheduleTitles) {
+        // C11：按原样重建完整创建请求（不再用占位 prompt / 硬编码 every_seconds）
+        for (const request of tpl.skills.schedules) {
           try {
-            await schedules.create({ title, prompt: `（模板 ${tpl.id} 重建的例程：${title}）`, every_seconds: 86_400 })
+            await schedules.create({ ...request, prompt: request.prompt })
             restoredSchedules += 1
           } catch (error) {
-            warn(`例程 '${title}' 重建失败：${String(error)}`)
+            warn(`例程 '${request.title}' 重建失败：${String(error)}`)
           }
         }
       }
