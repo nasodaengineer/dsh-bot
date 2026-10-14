@@ -25,7 +25,7 @@ import { attachBotApproval, type BotApprovalRuntime } from './bot-approval.js'
 import { attachBotSchedules, type BotSchedulesRuntime } from './schedules.js'
 import { createAgentTeamsFacade, type AgentTeamsFacade, type AgentTeamsService } from './agent-teams.js'
 import { createTaskBoard, type TaskBoard } from './taskboard.js'
-import { createJevJudge, type JevJudge } from './jev.js'
+import { createJevJudge, resolveJevBackend, type AutoDecideService, type JevJudge } from './jev.js'
 import { createGroupChatRuntime, createRootSessionCarrier, type GroupChatRuntime } from './groupchat.js'
 import { createMemoryRepo, type MemoryRepo } from './memory.js'
 import { createTemplateStore, type TemplateStore } from './template.js'
@@ -35,11 +35,16 @@ export const name = 'dsh-bot'
 
 export const inject = ['agentPresets', 'systemPrompt', 'storage']
 
-/** Jev 决策模型配置：judge 直接注入（测试/自建），或给 apiKey 走 TypeSafe HTTP API */
+/** Jev 决策模型配置：judge 直接注入（测试/自建），或给 apiKey 走 TypeSafe HTTP API。
+ * 票 #14：decision 选决策后端——'autoDecide'（默认，运行期 ctx.inject 消费 'autoDecide'
+ * 服务，不在/失败/超时自动降级 builtin）| 'builtin'（TypeSafe 直连，凭据面归此） */
 export interface TypesafeOptions {
   readonly apiKey?: string
   readonly endpoint?: string
   readonly judge?: JevJudge
+  readonly decision?: 'autoDecide' | 'builtin'
+  /** 票 #16：审批三档 manual|limited|full（默认 manual；沿用本读取面，键名 approval） */
+  readonly approval?: 'manual' | 'limited' | 'full'
 }
 
 export interface DshBotRuntime {
@@ -236,24 +241,40 @@ function attachRuntimes(
     })
   })
 
+  // 票 #14：决策双后端。autoDecide 服务是运行期可选依赖（dsh-auto-decide 提供），
+  // 到齐即挂、掉了重挂；judge 在每次判定时弱读，缺失自动降级 builtin。
+  const autoDecideRef: { service?: AutoDecideService } = {}
+  ctx.inject(['autoDecide'], (services) => {
+    autoDecideRef.service = services.autoDecide as AutoDecideService
+  })
+
   // P2：ctx.agentTeams（dsh-experimental-agent-team）。门面只做 caller 透传；
   // 本函数由异步装配在 store 就绪后调用（attachRuntimes 的 store 参数）。
   ctx.inject(['agentTeams'], (services) => {
     const teams = createAgentTeamsFacade(services.agentTeams as AgentTeamsService)
     runtime.teams = teams
     runtime.tasks = createTaskBoard(teams)
-    const judge: JevJudge | undefined = options.typesafe?.judge ??
+    const builtinJudge: JevJudge | undefined = options.typesafe?.judge ??
       (options.typesafe?.apiKey !== undefined
         ? createJevJudge({ apiKey: options.typesafe.apiKey, endpoint: options.typesafe.endpoint })
         : undefined)
+    const judge: JevJudge | undefined = options.typesafe?.judge ?? resolveJevBackend({
+      decision: options.typesafe?.decision,
+      getAutoDecide: () => autoDecideRef.service,
+      builtin: builtinJudge,
+      warn: (message) => ctx.logger?.warn(message),
+    })
     if (judge === undefined) {
-      ctx.logger?.warn('dsh-bot: 未配置 typesafe.apiKey/judge，群聊路由走降级（本轮无人响应提示）')
+      ctx.logger?.warn('dsh-bot: 未配置 typesafe.apiKey/judge 且无 autoDecide 服务，群聊路由走降级（本轮无人响应提示）')
     }
     // A2：群聊载体——宿主侧真实创建/复用隐藏 root Session（schedules.ts 同款强制 root 手法）
     runtime.groups = createGroupChatRuntime(ctx, {
       store,
       judge,
       ensureSession: createRootSessionCarrier({ rootSessionId: options.rootSessionId }),
+      // 票 #16：审批三档 + autoDecide 弱读（limited/full 档自动判定，不可用回退 manual 语义）
+      approvalTier: options.typesafe?.approval,
+      getAutoDecide: () => autoDecideRef.service,
     })
   })
 }

@@ -94,12 +94,15 @@ export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): Ht
         return { status: 200, body: { ok: true, result: { messages: await groups.history(groupId) } } }
       }
       case 'group.approvals': {
-        // C12·待批卡读取（只读）
+        // C12·待批卡读取（只读）。修复轮·autoVerdict 闭环：这里消费 listApprovalCards
+        // （待批卡 + full 档已自动判定的卡），群面板因此能看到「已自动判定 allowed/rejected」
+        // 的完整结果——判定入口在 groupchat.requestApproval（full 档）→ listApprovalCards
+        // → 本路由 → 宿主面板，闭环成立。
         const groups = deps.getGroups()
         if (groups === undefined) return { status: 503, body: { ok: false, error: '群聊运行时未就绪' } }
         const groupId = (payload as { groupId?: unknown } | undefined)?.groupId
         if (typeof groupId !== 'string') return { status: 400, body: { ok: false, error: 'groupId 必填' } }
-        return { status: 200, body: { ok: true, result: { approvals: groups.listPendingApprovals(groupId) } } }
+        return { status: 200, body: { ok: true, result: { approvals: groups.listApprovalCards(groupId) } } }
       }
       case 'group.approve':
       case 'group.reject': {
