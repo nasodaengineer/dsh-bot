@@ -21,6 +21,7 @@ export default defineConfig([
       'src/jev.ts',
       'src/groupchat.ts',
       'src/memory.ts',
+      'src/memory-source.ts',
       'src/template.ts',
     ],
     outDir: 'lib',
