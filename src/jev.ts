@@ -5,11 +5,34 @@
  * choice 判定，候选 = 群成员 + 'none'（无人响应）。Jev 不可用/超时/返回未知选项
  * 一律走降级：responder='none' + degraded=true + reason，出提示文案，绝不挂死。
  *
- * API 形状（docs.typesafe.ai/api.md，2026-10 实读）：
+ * 票 #14 双后端：决策消费方优先走运行期注入的 'autoDecide' 服务（dsh-auto-decide，
+ * 自带退避重试/402 熔断/缓存，单次 15s 超时）；服务不在/超时/decode 失败 → 自动
+ * 降级 builtin（本文件的 TypeSafe HTTP 直连，TYPESAFE_API_KEY 凭据面归 builtin）。
+ * settings：decision: 'autoDecide'（默认）| 'builtin'。
+ *
+ * builtin API 形状（docs.typesafe.ai/api.md，2026-10 实读）：
  * POST https://api.typesafe.ai/v1/systemone
  *   Authorization: Bearer <key>；body { state, model: 'jev-latest', questions }
  *   → { answers: { [qid]: { type, choice, confidence, probabilities } } }
  */
+
+/** 本地 interface 切片（不 import @deepseek-ai/*）：autoDecide 服务唯一入口 decode() */
+export interface DecideAnswer {
+  readonly type: 'choice' | 'score' | 'noul'
+  readonly choice?: string
+  readonly confidence?: number
+  readonly probabilities?: Record<string, number>
+}
+
+export interface DecideOutcome {
+  readonly answers: Record<string, DecideAnswer>
+}
+
+export interface AutoDecideService {
+  decode(request: { state: unknown; questions: Record<string, unknown> }): Promise<DecideOutcome>
+}
+
+export type DecisionBackendMode = 'autoDecide' | 'builtin'
 
 export interface JevRouteMessage {
   readonly from: string
@@ -35,6 +58,9 @@ export interface JevJudgeOptions {
   readonly fetchImpl?: typeof fetch
 }
 
+/**
+ * 票 #14：builtin 后端 = 原有 TypeSafe HTTP 直连（凭据面：TYPESAFE_API_KEY 只在这条路径出现）。
+ */
 export function createJevJudge(options: JevJudgeOptions): JevJudge {
   const endpoint = options.endpoint ?? 'https://api.typesafe.ai/v1/systemone'
   const timeoutMs = options.timeoutMs ?? 15_000
@@ -129,4 +155,62 @@ export async function routeTurn(
     return { responder: 'none', degraded: true, reason: `Jev 返回未知响应者 '${choice}'` }
   }
   return { responder: choice, confidence: answer.confidence }
+}
+
+export interface JevBackendOptions {
+  /** settings 决策后端：默认 'autoDecide'（优先），显式 'builtin' 直连 TypeSafe */
+  readonly decision?: DecisionBackendMode
+  /** 运行期弱读 autoDecide 服务（ctx.inject(['autoDecide']) 到齐前返回 undefined） */
+  readonly getAutoDecide?: () => AutoDecideService | undefined
+  /** builtin 兜底判定（TypeSafe 直连）；undefined 表示未配置凭据 */
+  readonly builtin?: JevJudge
+  /** autoDecide decode 兜底超时（对方自带 15s 超时，这里只做保险） */
+  readonly timeoutMs?: number
+  readonly warn?: (message: string) => void
+}
+
+/**
+ * 票 #14 双后端解析：默认 autoDecide 优先——服务在且 decode 成功则透传 DecideOutcome.answers
+ * （choice/score/noul 题型原样透传，路由消费方只读 choice/confidence）；服务不在/decode 抛错/
+ * 超时 → 自动降级 builtin。decision='builtin' 时跳过 autoDecide。两个后端都不可用时返回
+ * undefined（由调用方走「未配置决策模型」降级文案），运行期双双缺失则抛错交给 routeTurn 降级。
+ */
+export function resolveJevBackend(options: JevBackendOptions): JevJudge | undefined {
+  const builtin = options.builtin
+  const warn = options.warn ?? (() => {})
+  const timeoutMs = options.timeoutMs ?? 15_000
+  if (options.decision === 'builtin') return builtin
+  const hasAutoDecideHook = options.getAutoDecide !== undefined
+  if (builtin === undefined && !hasAutoDecideHook) return undefined
+  return async (request) => {
+    const service = options.getAutoDecide?.()
+    if (service !== undefined) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      try {
+        const outcome = await Promise.race([
+          service.decode({ state: request.state, questions: request.questions }),
+          new Promise<never>((_, reject) => {
+            controller.signal.addEventListener('abort', () => reject(new Error('autoDecide decode 超时')))
+          }),
+        ])
+        if (outcome?.answers === undefined || typeof outcome.answers !== 'object') {
+          throw new Error('autoDecide 返回缺少 answers')
+        }
+        return outcome.answers as Record<string, { choice?: string; confidence?: number }>
+      } catch (error) {
+        warn(`dsh-bot: autoDecide 不可用，降级 builtin：${String(error)}`)
+      } finally {
+        clearTimeout(timer)
+      }
+    } else if (builtin !== undefined) {
+      warn('dsh-bot: autoDecide 服务未注入，降级 builtin 直连')
+    } else {
+      throw new Error('无可用决策后端（autoDecide 服务缺失且未配置 builtin）')
+    }
+    if (builtin === undefined) {
+      throw new Error('无可用决策后端（未配置 builtin）')
+    }
+    return builtin(request)
+  }
 }
