@@ -42,12 +42,15 @@ export function attachBotSchedules(
       // 实测#4 诊断探针：定位宿主 schedule 服务的真实挂载点（定位后移除）
       try {
         const probe = ctx as unknown as Record<string, unknown>
+        const fetchObj = (probe.connection as Record<string, unknown> | undefined)?.fetch as Record<string, unknown> | undefined
+        const fetchInfo = fetchObj && typeof fetchObj === 'object'
+          ? `fetch.keys=[${Object.keys(fetchObj).join(',')}] fetch.vals=[${Object.keys(fetchObj).map((k) => typeof fetchObj[k]).join(',')}]`
+          : `fetch=${typeof fetchObj}`
         const calls = probe.calls as unknown[] | undefined
-        const sample = Array.isArray(calls) && calls.length > 0
-          ? String(JSON.stringify(calls.find((c) => c && typeof c === 'object') ?? calls[0])).slice(0, 400)
-          : `len=${calls?.length ?? 'n/a'}`
-        const fetchFn = (probe.connection as Record<string, unknown> | undefined)?.fetch
-        protoTrace(`schedule 探针: callSample=${sample} fetch=${typeof fetchFn}${typeof fetchFn === 'function' ? ` fnSrc=${String(fetchFn).slice(0, 200)}` : ''}`)
+        const schedCalls = Array.isArray(calls)
+          ? calls.filter((c) => typeof c === 'string' && c.toLowerCase().includes('sched')).slice(0, 5).join(' | ') || 'none-string'
+          : 'not-array'
+        protoTrace(`schedule 探针: callsLen=${calls?.length ?? 'n/a'} schedCalls=[${schedCalls}] ${fetchInfo}`)
       } catch (e) { protoTrace(`schedule 探针异常: ${(e as Error).message}`) }
       throw new Error('dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）')
     }
