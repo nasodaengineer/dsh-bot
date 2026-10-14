@@ -235,15 +235,25 @@ function attachRuntimes(
     })
   })
 
-  // 实测#4：宿主后端 ctx 没有 cordis Service 'schedule'（schedule 是经 api-remotes/
-  // 增强挂在 ctx 上的属性，dsh-tool-schedule 同样直接弱读），inject 等不到——改惰性弱读。
+  // 实测#4：schedule 服务默认不在 web profile（用户级 cordis.patch.yml 已挂
+  // @deepseek-ai/dsh-schedule）。优先主树 inject 到齐捕获引用（工具执行在 worker
+  // 门面 ctx 上，其 schedule getter 恒 undefined，不能依赖执行期弱读）；
+  // 同时保留惰性弱读兜底（api-remotes 增强场景）。
   {
     const rootSessionId = options.rootSessionId
     if (rootSessionId === undefined) {
       ctx.logger?.warn('dsh-bot: 未配置 rootSessionId，例程运行时不挂载（例程必须绑定 root Session）')
     } else {
+      const scheduleRef: { service?: ScheduleService } = {}
+      try {
+        ctx.inject(['schedule'], (services) => {
+          scheduleRef.service = services.schedule as ScheduleService
+        })
+      } catch (error) {
+        ctx.logger?.warn(`dsh-bot: 订阅 schedule 服务失败（例程将走惰性弱读）：${String(error)}`)
+      }
       runtime.schedules = attachBotSchedules(ctx, {
-        schedule: () => (ctx as unknown as { schedule?: ScheduleService }).schedule,
+        schedule: () => scheduleRef.service ?? (ctx as unknown as { schedule?: ScheduleService }).schedule,
         rootSessionId,
       })
     }
