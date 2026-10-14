@@ -7,11 +7,16 @@ import { assertMcpServerName, createMcpBridge, isValidMcpServerName, mcpToolName
 
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
-test('bot_* 工具注册：十九个工具名、可注销', async () => {  const ctx = fakeContext()
+test('bot_* 工具注册：二十四个工具名、可注销', async () => {  const ctx = fakeContext()
   const runtime = apply(ctx, { rootSessionId: 'root-1' })
   await flush()
   assert.ok(runtime.botTools, 'botTools 应已挂载')
   assert.deepEqual([...runtime.botTools.names].sort(), [
+    'bot_group_answer',
+    'bot_group_approvals',
+    'bot_group_create',
+    'bot_group_message',
+    'bot_group_messages',
     'bot_memory_forget',
     'bot_memory_journal',
     'bot_memory_list',
@@ -34,14 +39,14 @@ test('bot_* 工具注册：十九个工具名、可注销', async () => {  const
   ])
   runtime.botTools.dispose()
   assert.deepEqual([...runtime.botTools.names], [])
-  assert.ok(ctx.calls.filter((c) => c.startsWith('tool dispose ')).length === 19)
+  assert.ok(ctx.calls.filter((c) => c.startsWith('tool dispose ')).length === 24)
 })
 
 test('实测回归：宿主强制 output 字段——每个注册定义都带 output.schema+render（dsh-tools index.d.ts:115）', async () => {
   const ctx = fakeContext()
   const runtime = apply(ctx, { rootSessionId: 'root-1' })
   await flush()
-  assert.ok(ctx.registeredTools.size === 19, `应注册 19 个工具，实际 ${ctx.registeredTools.size}`)
+  assert.ok(ctx.registeredTools.size === 24, `应注册 24 个工具，实际 ${ctx.registeredTools.size}`)
   for (const [name, tool] of ctx.registeredTools) {
     assert.ok(tool.output, `${name} 缺 output`)
     assert.ok(tool.output.schema !== undefined, `${name} output.schema 缺失`)
@@ -177,4 +182,51 @@ test('实测#3·bot_roster_remove：按 id 移除，名册为空', async () => {
   assert.deepEqual(list.bots, [])
   const bad = await ctx.registeredTools.get('bot_roster_remove').execute({})
   assert.ok(bad.error.includes('id 必填'))
+})
+
+test('实测#11·bot_group_create/message/messages：建群→发消息（Jev 路由+投递）→读历史', async () => {
+  const ctx = fakeContext({
+    services: {
+      agentTeams: { async membership() { return { teamId: 'root' } } },
+      sessionController: {
+        async selectModel() { return {} },
+        async prompt() { return { accepted: true } },
+      },
+    },
+  })
+  const runtime = apply(ctx, {
+    rootSessionId: 'root-session',
+    typesafe: { judge: async () => ({ responder: { type: 'choice', choice: 'bot-a', confidence: 0.8 } }) },
+  })
+  await flush()
+  await ctx.registeredTools.get('bot_roster_create').execute({ name: 'bot-a', id: 'bot-a' })
+  const created = await ctx.registeredTools.get('bot_group_create').execute({ name: '实测群', memberIds: ['bot-a'] })
+  assert.ok(created.group.id, '应返回群记录')
+  const missing = await ctx.registeredTools.get('bot_group_create').execute({ name: 'x' })
+  assert.ok(missing.error.includes('memberIds'))
+  const sent = await ctx.registeredTools.get('bot_group_message').execute({ groupId: created.group.id, text: '请报到' })
+  assert.equal(sent.responder, 'bot-a')
+  assert.equal(sent.degraded, undefined)
+  const history = await ctx.registeredTools.get('bot_group_messages').execute({ groupId: created.group.id })
+  assert.equal(history.messages.length, 1)
+  assert.equal(history.messages[0].text, '请报到')
+  const badText = await ctx.registeredTools.get('bot_group_message').execute({ groupId: created.group.id })
+  assert.ok(badText.error.includes('必填'))
+})
+
+test('实测#11·bot_group_approvals/answer：待批卡列出、人工拒绝 fail-closed', async () => {
+  const ctx = fakeContext({ services: { agentTeams: { async membership() { return { teamId: 'root' } } } } })
+  const runtime = apply(ctx, { rootSessionId: 'root-session' })
+  await flush()
+  const group = await runtime.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  const pendingPromise = runtime.groups.requestApproval({ groupId: group.id, toolName: 'pwsh', summary: '危险操作' })
+  const cards = await ctx.registeredTools.get('bot_group_approvals').execute({ groupId: group.id })
+  assert.equal(cards.pending.length, 1)
+  assert.equal(cards.pending[0].toolName, 'pwsh')
+  const answered = await ctx.registeredTools.get('bot_group_answer').execute({ approvalId: cards.pending[0].id, outcome: 'rejected' })
+  assert.deepEqual(answered, { ok: true, approvalId: cards.pending[0].id, outcome: 'rejected' })
+  const decided = await pendingPromise
+  assert.equal(decided.granted, false)
+  const bad = await ctx.registeredTools.get('bot_group_answer').execute({ approvalId: 'x', outcome: 'allow' })
+  assert.ok(bad.error.includes('outcome'))
 })

@@ -232,6 +232,7 @@ function attachRuntimes(
       getSelectedBotId: () => runtime.selectedId as string | undefined,
       selectBot: (id) => selection.selectBot(id),
       getTemplates: () => runtime.templates as TemplateStore | undefined,
+      getGroups: () => runtime.groups as GroupChatRuntime | undefined,
     })
   })
 

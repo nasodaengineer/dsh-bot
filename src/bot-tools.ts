@@ -10,6 +10,7 @@ import type { BotRoster } from './roster.js'
 import type { BotSchedulesRuntime } from './schedules.js'
 import type { MemoryRepo } from './memory.js'
 import type { TemplateStore } from './template.js'
+import type { GroupChatRuntime } from './groupchat.js'
 import type { HostContext, ScheduleCreateRequest, ToolsService } from './types.js'
 import { trace } from './diag.js'
 
@@ -78,6 +79,8 @@ export interface BotToolsDeps {
   readonly selectBot?: (id: string | undefined) => Promise<void>
   /** 模板仓库（票 #11，异步就绪） */
   readonly getTemplates: () => TemplateStore | undefined
+  /** 实测#11：群聊运行时（异步就绪，可能晚于工具注册） */
+  readonly getGroups: () => GroupChatRuntime | undefined
 }
 
 /** 实测#4：宿主 execute 第二参 exec 携带 agent（dsh-tools index.d.ts:128/229），
@@ -460,6 +463,105 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
         const store = deps.getTemplates()
         if (store === undefined) return { error: 'dsh-bot: 模板仓库未就绪' }
         return { templates: await store.list() }
+      }),
+  })
+
+  // ---- 实测#11：bot_group_* 五件（群聊会话内工具面；此前只有 HTTP 端点） ----
+  register({
+    name: 'bot_group_create',
+    description: '创建一个群聊（隐藏 root Session 承载；成员为本插件名册里的 Bot id）',
+    parameters: {
+      type: 'object',
+      properties: { name: { type: 'string' }, memberIds: { type: 'array', items: { type: 'string' } } },
+      required: ['name', 'memberIds'],
+    },
+    execute: (args) =>
+      safeExecute(async () => {
+        const groups = deps.getGroups()
+        if (groups === undefined) return { error: 'dsh-bot: 群聊能力未挂载' }
+        const a = args as { name?: unknown; memberIds?: unknown }
+        if (typeof a.name !== 'string' || a.name.trim() === '') return { error: 'dsh-bot: name 必填' }
+        if (!Array.isArray(a.memberIds) || a.memberIds.length === 0 || !a.memberIds.every((m) => typeof m === 'string' && m.trim() !== '')) {
+          return { error: 'dsh-bot: memberIds 必须是非空字符串数组' }
+        }
+        return { group: await groups.createGroup({ name: a.name.trim(), memberIds: a.memberIds.map((m) => (m as string).trim()) }) }
+      }),
+  })
+
+  register({
+    name: 'bot_group_message',
+    description: '在群里发一条消息：Jev 路由选一名成员响应，投递到群载体 Session 执行',
+    parameters: {
+      type: 'object',
+      properties: { groupId: { type: 'string' }, from: { type: 'string' }, text: { type: 'string' } },
+      required: ['groupId', 'text'],
+    },
+    execute: (args) =>
+      safeExecute(async () => {
+        const groups = deps.getGroups()
+        if (groups === undefined) return { error: 'dsh-bot: 群聊能力未挂载' }
+        const a = args as { groupId?: unknown; from?: unknown; text?: unknown }
+        if (typeof a.groupId !== 'string' || typeof a.text !== 'string' || a.text.trim() === '') {
+          return { error: 'dsh-bot: groupId 与 text 必填' }
+        }
+        const from = typeof a.from === 'string' && a.from.trim() !== '' ? a.from.trim() : 'user'
+        return await groups.postMessage({ groupId: a.groupId, from, text: a.text })
+      }),
+  })
+
+  register({
+    name: 'bot_group_messages',
+    description: '列出某群的消息历史',
+    parameters: {
+      type: 'object',
+      properties: { groupId: { type: 'string' } },
+      required: ['groupId'],
+    },
+    execute: (args) =>
+      safeExecute(async () => {
+        const groups = deps.getGroups()
+        if (groups === undefined) return { error: 'dsh-bot: 群聊能力未挂载' }
+        const groupId = (args as { groupId?: unknown }).groupId
+        if (typeof groupId !== 'string') return { error: 'dsh-bot: groupId 必填' }
+        return { messages: await groups.history(groupId) }
+      }),
+  })
+
+  register({
+    name: 'bot_group_approvals',
+    description: '列出某群的审批卡（待批 + 已自动判定），供人工查看与应答',
+    parameters: {
+      type: 'object',
+      properties: { groupId: { type: 'string' } },
+      required: ['groupId'],
+    },
+    execute: (args) =>
+      safeExecute(async () => {
+        const groups = deps.getGroups()
+        if (groups === undefined) return { error: 'dsh-bot: 群聊能力未挂载' }
+        const groupId = (args as { groupId?: unknown }).groupId
+        if (typeof groupId !== 'string') return { error: 'dsh-bot: groupId 必填' }
+        return { pending: groups.listPendingApprovals(groupId), decided: groups.listApprovalCards(groupId) }
+      }),
+  })
+
+  register({
+    name: 'bot_group_answer',
+    description: '人工应答一条待批卡：allowed-once（放行一次）或 rejected（拒绝）',
+    parameters: {
+      type: 'object',
+      properties: { approvalId: { type: 'string' }, outcome: { type: 'string', enum: ['allowed-once', 'rejected'] } },
+      required: ['approvalId', 'outcome'],
+    },
+    execute: (args) =>
+      safeExecute(async () => {
+        const groups = deps.getGroups()
+        if (groups === undefined) return { error: 'dsh-bot: 群聊能力未挂载' }
+        const a = args as { approvalId?: unknown; outcome?: unknown }
+        if (typeof a.approvalId !== 'string') return { error: 'dsh-bot: approvalId 必填' }
+        if (a.outcome !== 'allowed-once' && a.outcome !== 'rejected') return { error: 'dsh-bot: outcome 只能是 allowed-once 或 rejected' }
+        await groups.answerApproval(a.approvalId, a.outcome)
+        return { ok: true, approvalId: a.approvalId, outcome: a.outcome }
       }),
   })
 
