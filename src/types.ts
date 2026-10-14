@@ -194,10 +194,18 @@ export interface HostContext {
   inject(names: readonly string[], callback: (services: Record<string, unknown>) => void): unknown
 }
 
+/** 与 dsh-llm UserMessage 对齐的最小注入结构：四个字段缺一，会话日志读取端会拒收整条会话 */
+export interface InjectedUserMessage {
+  id: string
+  role: 'user'
+  content: ReadonlyArray<{ type: 'text'; text: string }>
+  source: { kind: string }
+}
+
 /** dsh-mmaping 验证过的会话启动注入形态（research/dsh-plugin-skeleton.md §2.4） */
 export interface CreatedAgent {
   session?: { header?: { cwd?: string } }
-  inject?(message: unknown): unknown
+  inject?(message: InjectedUserMessage): unknown
 }
 
 export interface AgentEventPayload {

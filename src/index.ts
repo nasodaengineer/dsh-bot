@@ -14,6 +14,7 @@
  * 分层混合决策（票 #2/#3）：spawn/消息/任务板归 ctx.agentTeams（P2 做）；
  * Bot 持久身份走自有 KV 状态。本票不做任何 client 侧注入（P2 的事）。
  */
+import { randomUUID } from 'node:crypto'
 import type { AgentEventPayload, BotIdentity, HostContext, LlmService, SessionControllerService, ToolsService, CredentialsService, ApprovalService, ScheduleService } from './types.js'
 import { createIdentityStore, type IdentityStore } from './identity.js'
 import { createRoster, type BotRoster } from './roster.js'
@@ -113,13 +114,35 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
       const bots = await roster.list()
       const bot = selected !== undefined ? bots.find((b) => b.id === selected) : undefined
       if (bot === undefined) return
-      agent.inject?.(`[dsh-bot] 当前 Bot：${bot.name}（${bot.title}）\n${bot.description}`)
+      agent.inject?.({
+        id: randomUUID(),
+        role: 'user',
+        content: [{ type: 'text', text: `[dsh-bot] 当前 Bot：${bot.name}（${bot.title}）\n${bot.description}` }],
+        source: { kind: 'plugin:dsh-bot' },
+      })
     })().catch((error) => {
       ctx.logger?.warn(`dsh-bot: agent/created 异步注入失败：${String(error)}`)
     })
   }
 
   // 异步装配：cordis 的 apply 可以返回 Promise；注册动作都在 Promise 内完成。
+  /** 实测#5：selection 提前建（attachRuntimes 的 bot_select 工具依赖它），门面直接引用 */
+  const selection = {
+    async selectBot(id: string) {
+      runtime.selectedId = id
+      await storeRef?.putSelectedId(id)
+    },
+    selectedBotId() {
+      return runtime.selectedId
+    },
+    async selectedBot() {
+      const roster = runtime.roster
+      const id = runtime.selectedId
+      if (roster === undefined || id === undefined) return undefined
+      return roster.list().then((bots) => bots.find((b) => b.id === id))
+    },
+  }
+
   void (async () => {
     trace('apply: async 装配开始')
     const store = await createIdentityStore(ctx)
@@ -163,23 +186,6 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
 
   onAgentCreated(ctx, handleAgentCreated)
 
-  /** 实测#5：selection 提前建（attachRuntimes 的 bot_select 工具依赖它），门面直接引用 */
-  const selection = {
-    async selectBot(id) {
-      runtime.selectedId = id
-      await storeRef?.putSelectedId(id)
-    },
-    selectedBotId() {
-      return runtime.selectedId
-    },
-    async selectedBot() {
-      const roster = runtime.roster
-      const id = runtime.selectedId
-      if (roster === undefined || id === undefined) return undefined
-      return roster.list().then((bots) => bots.find((b) => b.id === id))
-    },
-  }
-
   return {
     get roster() { return runtime.roster! },
     get models() { return runtime.models },
@@ -196,8 +202,6 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     mcp,
     selection,
   } as DshBotRuntime
-
-  return returned
 }
 
 /** P1/P2 运行时装配：ctx.inject 订阅（见文件头注释的取舍理由） */

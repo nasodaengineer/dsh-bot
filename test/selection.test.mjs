@@ -33,8 +33,13 @@ test('agent/created：把选中 Bot 的人格注入新 Agent', async () => {
   ctx.listeners.get('agent/created')[0]({ agent })
   await flush()
   assert.equal(injected.length, 1)
-  assert.ok(injected[0].includes('小助手'))
-  assert.ok(injected[0].includes('认真负责'))
+  // 注入必须是 dsh-llm UserMessage 对象；裸字符串会被会话日志读取端拒收（事故 #2 根因）
+  assert.equal(injected[0].role, 'user')
+  assert.equal(typeof injected[0].id, 'string')
+  assert.deepEqual(injected[0].source, { kind: 'plugin:dsh-bot' })
+  const text = injected[0].content.map((block) => block.text).join('')
+  assert.ok(text.includes('小助手'))
+  assert.ok(text.includes('认真负责'))
 })
 
 test('agent/created：注入抛错被吞掉（只 warn），不影响宿主', () => {

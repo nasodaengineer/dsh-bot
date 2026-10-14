@@ -200,6 +200,7 @@ export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): Ht
         if (handled === undefined) return json(404, { ok: false, error: `未知 endpoint '${body.endpoint}'` })
         return json(handled.status, handled.body)
       } catch (error) {
+        trace(`endpoint.fetch: '${body.endpoint}' 处理失败 ${String(error instanceof Error ? error.stack : error)}`)
         ctx.logger?.warn(`dsh-bot: 端点 '${body.endpoint}' 处理失败：${String(error)}`)
         return json(500, { ok: false, error: '端点处理失败' })
       }
