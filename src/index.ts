@@ -154,7 +154,7 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     }
 
     // P1 功能面：运行期可选依赖，到齐即挂，掉了重挂。
-    attachRuntimes(ctx, runtime, store, options)
+    attachRuntimes(ctx, runtime, store, options, selection)
     trace('apply: attachRuntimes 完成（inject 订阅已注册）')
   })().catch((error) => {
     trace(`apply: 初始化失败 ${String(error)}`)
@@ -162,6 +162,23 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
   })
 
   onAgentCreated(ctx, handleAgentCreated)
+
+  /** 实测#5：selection 提前建（attachRuntimes 的 bot_select 工具依赖它），门面直接引用 */
+  const selection = {
+    async selectBot(id) {
+      runtime.selectedId = id
+      await storeRef?.putSelectedId(id)
+    },
+    selectedBotId() {
+      return runtime.selectedId
+    },
+    async selectedBot() {
+      const roster = runtime.roster
+      const id = runtime.selectedId
+      if (roster === undefined || id === undefined) return undefined
+      return roster.list().then((bots) => bots.find((b) => b.id === id))
+    },
+  }
 
   return {
     get roster() { return runtime.roster! },
@@ -177,22 +194,10 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     get templates() { return runtime.templates },
     get endpoint() { return runtime.endpoint },
     mcp,
-    selection: {
-      async selectBot(id) {
-        runtime.selectedId = id
-        await storeRef?.putSelectedId(id)
-      },
-      selectedBotId() {
-        return runtime.selectedId
-      },
-      async selectedBot() {
-        const roster = runtime.roster
-        const id = runtime.selectedId
-        if (roster === undefined || id === undefined) return undefined
-        return roster.list().then((bots) => bots.find((b) => b.id === id))
-      },
-    },
+    selection,
   } as DshBotRuntime
+
+  return returned
 }
 
 /** P1/P2 运行时装配：ctx.inject 订阅（见文件头注释的取舍理由） */
@@ -201,6 +206,7 @@ function attachRuntimes(
   runtime: Record<string, unknown>,
   store: IdentityStore,
   options: ApplyOptions,
+  selection: { selectBot(id: string | undefined): Promise<void> },
 ): void {
   ctx.inject(['llm', 'sessionController'], (services) => {
     runtime.models = attachModelRuntime(ctx, {
@@ -220,6 +226,7 @@ function attachRuntimes(
       getSchedules,
       getMemory: () => runtime.memory as MemoryRepo | undefined,
       getSelectedBotId: () => runtime.selectedId as string | undefined,
+      selectBot: (id) => selection.selectBot(id),
       getTemplates: () => runtime.templates as TemplateStore | undefined,
     })
   })

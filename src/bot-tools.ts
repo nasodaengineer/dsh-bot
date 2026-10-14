@@ -74,6 +74,8 @@ export interface BotToolsDeps {
   readonly getMemory: () => MemoryRepo | undefined
   /** 当前选中 Bot（记忆按 Bot 隔离） */
   readonly getSelectedBotId: () => string | undefined
+  /** 实测#5：会话内选中 Bot（记忆/模板等按 Bot 隔离的工具的前提） */
+  readonly selectBot?: (id: string | undefined) => Promise<void>
   /** 模板仓库（票 #11，异步就绪） */
   readonly getTemplates: () => TemplateStore | undefined
 }
@@ -182,6 +184,37 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
         await deps.roster.remove(id.trim())
         return { ok: true, id: id.trim() }
       }),
+  })
+
+  // ---- 实测#5：bot_select / bot_selected——记忆等按 Bot 隔离的工具需要先选中 ----
+  register({
+    name: 'bot_select',
+    description: '选中一个 Bot（后续记忆/模板等按 Bot 隔离的操作都以它为准）',
+    parameters: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Bot id（必填）' } },
+      required: ['id'],
+      additionalProperties: false,
+    },
+    execute: (args: unknown) =>
+      safeExecute(async () => {
+        const id = (args as { id?: unknown } | undefined)?.id
+        if (typeof id !== 'string' || id.trim() === '') throw new Error('id 必填')
+        const selectBot = deps.selectBot
+        if (selectBot === undefined) return { error: 'dsh-bot: 选 Bot 能力未挂载（selection 未就绪）' }
+        const exists = (await deps.roster.list()).some((b) => b.id === id.trim())
+        if (!exists) return { error: `dsh-bot: not found bot ${id.trim()}` }
+        await selectBot(id.trim())
+        return { ok: true, selected: id.trim() }
+      }),
+  })
+
+  register({
+    name: 'bot_selected',
+    description: '查看当前选中的 Bot（未选中时明确返回 undefined）',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    execute: () =>
+      safeExecute(async () => ({ selected: deps.getSelectedBotId() ?? undefined })),
   })
 
   register({

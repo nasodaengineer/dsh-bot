@@ -7,7 +7,7 @@ import { assertMcpServerName, createMcpBridge, isValidMcpServerName, mcpToolName
 
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
-test('bot_* 工具注册：十七个工具名、可注销', async () => {  const ctx = fakeContext()
+test('bot_* 工具注册：十九个工具名、可注销', async () => {  const ctx = fakeContext()
   const runtime = apply(ctx, { rootSessionId: 'root-1' })
   await flush()
   assert.ok(runtime.botTools, 'botTools 应已挂载')
@@ -26,20 +26,22 @@ test('bot_* 工具注册：十七个工具名、可注销', async () => {  const
     'bot_schedule_list',
     'bot_schedule_pause',
     'bot_schedule_resume',
+    'bot_select',
+    'bot_selected',
     'bot_template_export',
     'bot_template_import',
     'bot_template_list',
   ])
   runtime.botTools.dispose()
   assert.deepEqual([...runtime.botTools.names], [])
-  assert.ok(ctx.calls.filter((c) => c.startsWith('tool dispose ')).length === 17)
+  assert.ok(ctx.calls.filter((c) => c.startsWith('tool dispose ')).length === 19)
 })
 
 test('实测回归：宿主强制 output 字段——每个注册定义都带 output.schema+render（dsh-tools index.d.ts:115）', async () => {
   const ctx = fakeContext()
   const runtime = apply(ctx, { rootSessionId: 'root-1' })
   await flush()
-  assert.ok(ctx.registeredTools.size === 17, `应注册 17 个工具，实际 ${ctx.registeredTools.size}`)
+  assert.ok(ctx.registeredTools.size === 19, `应注册 19 个工具，实际 ${ctx.registeredTools.size}`)
   for (const [name, tool] of ctx.registeredTools) {
     assert.ok(tool.output, `${name} 缺 output`)
     assert.ok(tool.output.schema !== undefined, `${name} output.schema 缺失`)
@@ -85,6 +87,21 @@ test('bot_schedule_delete / bot_schedule_list / bot_roster_list', async () => {
   assert.deepEqual(list.schedules, [])
   const roster = await ctx.registeredTools.get('bot_roster_list').execute({})
   assert.deepEqual(roster.bots, [{ id: 'b1', name: '小助手', title: '助理', description: '测试人格' }])
+})
+
+test('实测#5：bot_select 校验存在并调 selection.selectBot；bot_selected 返回当前选中', async () => {
+  const ctx = fakeContext()
+  const runtime = apply(ctx, { rootSessionId: 'root-1' })
+  await flush()
+  await runtime.roster.create({ id: 'b1', name: '小助手', title: '', description: '' })
+  const select = ctx.registeredTools.get('bot_select')
+  const missing = await select.execute({ id: 'nope' })
+  assert.ok(missing.error && missing.error.includes('not found'), `missing=${JSON.stringify(missing)}`)
+  const ok = await select.execute({ id: 'b1' })
+  assert.deepEqual(ok, { ok: true, selected: 'b1' })
+  assert.equal(runtime.selection.selectedBotId(), 'b1')
+  const selected = await ctx.registeredTools.get('bot_selected').execute({})
+  assert.deepEqual(selected, { selected: 'b1' })
 })
 
 test('bot_schedule_pause / bot_schedule_resume：暂停记请求+删宿主，恢复重建（A3）', async () => {
