@@ -9,6 +9,7 @@
  * 重建后的 record id 会变（诚实告知调用方）。
  */
 import type { HostContext, ScheduleCreateRequest, ScheduleRecord, ScheduleService } from './types.js'
+import { trace as protoTrace } from './diag.js'
 
 export interface BotSchedulesRuntime {
   readonly rootSessionId: string
@@ -37,7 +38,16 @@ export function attachBotSchedules(
     typeof opts.schedule === 'function' ? opts.schedule() : opts.schedule
   const requireSchedule = (): ScheduleService => {
     const schedule = resolveSchedule()
-    if (schedule === undefined) throw new Error('dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）')
+    if (schedule === undefined) {
+      // 实测#4 诊断探针：定位宿主 schedule 服务的真实挂载点（定位后移除）
+      try {
+        const probe = ctx as unknown as Record<string, unknown>
+        const keys = Object.keys(probe).filter((k) => k.toLowerCase().includes('sched')).join(',') || 'none'
+        const getTry = typeof probe.get === 'function' ? typeof (probe.get as (n: string) => unknown)('schedule') : 'no-get'
+        protoTrace(`schedule 探针: ctx.schedule=${typeof probe.schedule} get('schedule')=${getTry} sched*keys=[${keys}]`)
+      } catch { /* 诊断失败不影响主流程 */ }
+      throw new Error('dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）')
+    }
     return schedule
   }
   const warn = (message: string) => ctx.logger?.warn(`dsh-bot: ${message}`)
