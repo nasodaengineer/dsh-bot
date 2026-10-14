@@ -89,10 +89,13 @@ const sessionIdOf = (exec: unknown): string => {
   return typeof id === 'string' ? id : ''
 }
 
-/** execute 统一包装：工具永不抛错 */
+/** execute 统一包装：工具永不抛错；返回值做无损化清洗（宿主 snapshotJsonValue
+ * 拒绝含 undefined 值的输出——实测#10：exportTemplate 的 persona.color=undefined
+ * 连带 KV 里的脏记录把 bot_template_* 三件全炸成 value is not lossless JSON）。 */
 async function safeExecute(fn: () => Promise<unknown>): Promise<unknown> {
   try {
-    return await fn()
+    const value = await fn()
+    return value === undefined ? { ok: true } : JSON.parse(JSON.stringify(value))
   } catch (error) {
     return { error: String(error instanceof Error ? error.message : error) }
   }
