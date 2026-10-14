@@ -253,7 +253,12 @@ export function createDshBotMemorySource(
     ],
   }
 
-  const botIdOf = (scope: MemoryOperationScope | undefined) =>
+  /**
+   * 修复轮·resolveBotId（原 botIdOf 改名，表意「解析」而非「取属」）：
+   * 真实优先级是注入配置优先于 scope——options.defaultBotId（装配方显式注入）最优先，
+   * 其次 scope.agentId（运行期上下文），最后 'default' 兜底。
+   */
+  const resolveBotId = (scope: MemoryOperationScope | undefined) =>
     options.defaultBotId ?? (typeof scope?.agentId === 'string' && scope.agentId !== '' ? scope.agentId : 'default')
 
   return {
@@ -276,7 +281,7 @@ export function createDshBotMemorySource(
         },
 
         async project(request: MemoryProjectionRequest): Promise<MemoryViewContribution> {
-          const botId = botIdOf(request.scope)
+          const botId = resolveBotId(request.scope)
           const index = await repo.indexText(botId)
           if (!request.includeProjection || index === '') {
             return { fragments: [] }
@@ -311,7 +316,7 @@ export function createDshBotMemorySource(
               truncated: false,
             }
           }
-          const botId = botIdOf(request.view.scope)
+          const botId = resolveBotId(request.view.scope)
           const hits = await repo.search(botId, query)
           return {
             id: `ev-${Date.now().toString(36)}`,

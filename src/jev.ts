@@ -170,11 +170,29 @@ export interface ApprovalJudgmentResult {
 }
 
 /**
+ * 修复轮·共享超时模板：给任意 promise 挂保险超时，超时抛 `tag` 错误。
+ * judgeApprovalDenial 与 resolveJevBackend 的 autoDecide 弱读共用（对方自带 15s 超时，
+ * 这里只做本地保险，绝不挂死）。
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number, tag: string): Promise<T> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      controller.signal.addEventListener('abort', () => reject(new Error(tag)))
+    }),
+  ]).finally(() => clearTimeout(timer))
+}
+
+/**
  * 票 #16·审批自动判定：noul 题「是否应拒绝该审批」。
- * 只弱读 autoDecide 服务（复用票 #14 的弱读 + 保险超时模式）——服务缺失/decode 抛错/
- * 超时/应答缺失 → judgment='unavailable'，绝不降级 builtin，也绝不抛错。
- * 判读：choice 'true'=应拒绝→deny；'false'=允许→allow；choice 缺失时看概率，
- * p(false) 明显占优才 allow，其余一律 uncertain（消费方把 uncertain 当 deny，fail-closed）。
+ * 只弱读 autoDecide 服务（复用票 #14 的弱读 + withTimeout 保险超时模式）——服务缺失/
+ * decode 抛错/超时/应答缺失 → judgment='unavailable'，绝不降级 builtin，也绝不抛错。
+ * 判读（修复轮 fail-closed 收紧）：只认 choice——'true'=应拒绝→deny；'false'=允许→allow；
+ * choice 缺失（含概率再怎么倾向 false）一律 uncertain（消费方把 uncertain 当 deny，
+ * fail-closed）。修复轮删除了旧的「p(false) 占优即 allow」概率兜底：概率不能代替
+ * 服务给出的明确判定，缺 choice 说明应答不可解析，宁可拒也不放行。
  */
 export async function judgeApprovalDenial(
   getAutoDecide: (() => AutoDecideService | undefined) | undefined,
@@ -186,10 +204,8 @@ export async function judgeApprovalDenial(
     return { judgment: 'unavailable', basis: 'autoDecide 服务不可用' }
   }
   const timeoutMs = options.timeoutMs ?? 15_000
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const outcome = await Promise.race([
+    const outcome = await withTimeout(
       service.decode({
         state: { toolName: input.toolName, summary: input.summary ?? '' },
         questions: {
@@ -201,10 +217,9 @@ export async function judgeApprovalDenial(
           },
         },
       }),
-      new Promise<never>((_, reject) => {
-        controller.signal.addEventListener('abort', () => reject(new Error('autoDecide decode 超时')))
-      }),
-    ])
+      timeoutMs,
+      'autoDecide decode 超时',
+    )
     const answer = outcome?.answers?.deny
     if (answer === undefined || typeof answer !== 'object') {
       return { judgment: 'unavailable', basis: 'autoDecide 返回缺少 deny 应答' }
@@ -217,16 +232,10 @@ export async function judgeApprovalDenial(
     if (answer.choice === 'false') {
       return { judgment: 'allow', basis, confidence: answer.confidence, probabilities }
     }
-    const pTrue = typeof probabilities?.['true'] === 'number' ? (probabilities['true'] as number) : 0
-    const pFalse = typeof probabilities?.['false'] === 'number' ? (probabilities['false'] as number) : 0
-    if (pFalse > pTrue && pFalse > 0) {
-      return { judgment: 'allow', basis: `概率判允许 p(false)=${pFalse}`, probabilities }
-    }
+    // choice 缺失一律 uncertain（fail-closed）：概率不作为放行依据（修复轮删除兜底）
     return { judgment: 'uncertain', basis: 'autoDecide 应答无法解析出明确判定', probabilities }
   } catch (error) {
     return { judgment: 'unavailable', basis: `autoDecide 判定失败：${String(error)}` }
-  } finally {
-    clearTimeout(timer)
   }
 }
 
@@ -241,6 +250,10 @@ export interface JevBackendOptions {
   readonly timeoutMs?: number
   readonly warn?: (message: string) => void
 }
+
+// 修复轮：autoDecide 永不在时的「未注入」warn 是 once 语义（模块级标志，只 warn 一次，
+// 避免每轮群聊路由都刷一条重复告警）。
+let warnedAutoDecideMissing = false
 
 /**
  * 票 #14 双后端解析：默认 autoDecide 优先——服务在且 decode 成功则透传 DecideOutcome.answers
@@ -258,32 +271,28 @@ export function resolveJevBackend(options: JevBackendOptions): JevJudge | undefi
   return async (request) => {
     const service = options.getAutoDecide?.()
     if (service !== undefined) {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), timeoutMs)
       try {
-        const outcome = await Promise.race([
+        const outcome = await withTimeout(
           service.decode({ state: request.state, questions: request.questions }),
-          new Promise<never>((_, reject) => {
-            controller.signal.addEventListener('abort', () => reject(new Error('autoDecide decode 超时')))
-          }),
-        ])
+          timeoutMs,
+          'autoDecide decode 超时',
+        )
         if (outcome?.answers === undefined || typeof outcome.answers !== 'object') {
           throw new Error('autoDecide 返回缺少 answers')
         }
         return outcome.answers as Record<string, { choice?: string; confidence?: number }>
       } catch (error) {
         warn(`dsh-bot: autoDecide 不可用，降级 builtin：${String(error)}`)
-      } finally {
-        clearTimeout(timer)
       }
     } else if (builtin !== undefined) {
-      warn('dsh-bot: autoDecide 服务未注入，降级 builtin 直连')
+      if (!warnedAutoDecideMissing) {
+        warnedAutoDecideMissing = true
+        warn('dsh-bot: autoDecide 服务未注入，降级 builtin 直连')
+      }
     } else {
       throw new Error('无可用决策后端（autoDecide 服务缺失且未配置 builtin）')
     }
-    if (builtin === undefined) {
-      throw new Error('无可用决策后端（未配置 builtin）')
-    }
-    return builtin(request)
+    // 走到这里 builtin 必已配置（双双缺失在上方 else 已抛错），早返回 builtin 直连
+    return builtin!(request)
   }
 }

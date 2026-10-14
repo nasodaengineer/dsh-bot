@@ -247,4 +247,71 @@ test('审计：KV 打不开时降级内存记录，审批路径不抛错', async
   const decided = await runtime.groups.requestApproval({ groupId: group.id, toolName: 'x', timeoutMs: 60000 })
   assert.equal(decided.granted, true)
   assert.equal(runtime.groups.listApprovalAudits().length, 1, '内存审计仍在')
+  assert.ok(ctx.warnings.some((w) => w.includes('审计降级内存')), 'KV 不可用要有「审计降级内存」warn（不静默）')
+})
+
+test('审计：单次 KV 写失败也要 warn「审计降级内存」，审批路径不抛错', async () => {
+  const services = { agentTeams: nativeTeams(), autoDecide: fakeDecide(ALLOW) }
+  const ctx = fakeContext({ services })
+  // 在 apply 之前装好 hook，让 approvals 表的 putRecord 必炸（模拟 KV 单次写失败）
+  const rawOpen = ctx.kvBackend.kv.open.bind(ctx.kvBackend.kv)
+  ctx.kvBackend.kv.open = async (d) => {
+    const unit = await rawOpen(d)
+    const rawPut = unit.putRecord.bind(unit)
+    unit.putRecord = async (table, key, value) => {
+      if (table === 'approvals') throw new Error('kv write boom')
+      return rawPut(table, key, value)
+    }
+    return unit
+  }
+  const runtime = apply(ctx, {
+    rootSessionId: 'root-session',
+    typesafe: { judge: async () => ({ responder: { choice: 'none' } }), approval: 'full' },
+  })
+  await flush()
+  const group = await runtime.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  const decided = await runtime.groups.requestApproval({ groupId: group.id, toolName: 'x', timeoutMs: 60000 })
+  assert.equal(decided.granted, true, 'KV 写失败不阻断审批')
+  assert.ok(ctx.warnings.some((w) => w.includes('审计降级内存')), '写失败要有「审计降级内存」warn')
+  assert.equal(runtime.groups.listApprovalAudits().length, 1, '内存审计仍在')
+})
+
+// ---------- 修复轮：decidedCards 落 KV 持久化 ----------
+
+test('full 档已判定卡持久化：重启（新 runtime 载回同一 KV）后 listApprovalCards 仍展示', async () => {
+  const services = { agentTeams: nativeTeams(), autoDecide: fakeDecide(ALLOW) }
+  const ctx = fakeContext({ services })
+  const first = apply(ctx, {
+    rootSessionId: 'root-session',
+    typesafe: { judge: async () => ({ responder: { choice: 'none' } }), approval: 'full' },
+  })
+  await flush()
+  const group = await first.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  await first.groups.requestApproval({ groupId: group.id, toolName: 'fs.read', timeoutMs: 60000 })
+  assert.equal(first.groups.listApprovalCards(group.id).length, 1)
+  // 「重启」：同一 ctx 再 apply 一次，新 runtime 从 KV 载回
+  const second = apply(ctx, {
+    rootSessionId: 'root-session',
+    typesafe: { judge: async () => ({ responder: { choice: 'none' } }), approval: 'full' },
+  })
+  await flush()
+  const cards = second.groups.listApprovalCards(group.id)
+  assert.equal(cards.length, 1, '重启后已判定卡从 KV 载回，仍可展示')
+  assert.equal(cards[0].status, 'answered')
+  assert.equal(cards[0].autoVerdict, 'allowed')
+  assert.equal(cards[0].toolName, 'fs.read')
+})
+
+test('answerApproval：未知卡直接抛错（fail-closed），不写空字段审计', async () => {
+  const services = { agentTeams: nativeTeams() }
+  const ctx = fakeContext({ services })
+  const runtime = apply(ctx, {
+    rootSessionId: 'root-session',
+    typesafe: { judge: async () => ({ responder: { choice: 'none' } }) },
+  })
+  await flush()
+  const group = await runtime.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  const before = runtime.groups.listApprovalAudits().length
+  await assert.rejects(() => runtime.groups.answerApproval('apr-nope', 'allowed-once'))
+  assert.equal(runtime.groups.listApprovalAudits().length, before, '未知卡不产生审计记录')
 })

@@ -10,6 +10,22 @@ const flush = () => new Promise((resolve) => setImmediate(resolve))
 
 const judge = async () => ({ choice: 'a', probability: 0.9 })
 
+function nativeTeamsFake() {
+  return {
+    async membership() { return { teamId: 'root' } },
+    async tryMembership() { return { teamId: 'root' } },
+    async listMembers() { return [] },
+    async spawnTeammate(o) { return { id: 'member-1', ...o } },
+    async sendMessage() { return { ok: true } },
+    async createTask(s) { return { id: 'task-1', status: 'open', ...s } },
+    async getTask() { return undefined },
+    async listTasks() { return [] },
+    async updateTask(r) { return { id: r.id, ...r.patch } },
+    async waitForChange() { return { changed: true } },
+    async interrupt() { return { ok: true } },
+  }
+}
+
 async function setup() {
   const ctx = fakeContext({
     services: {
@@ -165,4 +181,32 @@ test('端点：服务未就绪（groups/tasks 未挂）时对应端点返回 503
   const res = await post(route, { endpoint: 'group.list' })
   assert.equal(res.status, 503)
   assert.equal((await res.json()).ok, false)
+})
+
+// ---- 修复轮：group.approvals 闭环消费 listApprovalCards（含 autoVerdict） ----
+
+test('C12·group.approvals 展示 full 档已自动判定卡（含 autoVerdict，闭环消费 listApprovalCards）', async () => {
+  const ctx = fakeContext({
+    services: {
+      agentTeams: nativeTeamsFake(),
+      autoDecide: {
+        async decode() {
+          return { answers: { deny: { type: 'noul', choice: 'false', confidence: 0.8, probabilities: { true: 0.1, false: 0.8 } } } }
+        },
+      },
+    },
+  })
+  const runtime = apply(ctx, {
+    rootSessionId: 'root-session',
+    typesafe: { judge: async () => ({ responder: { choice: 'none' } }), approval: 'full' },
+  })
+  await flush()
+  const group = await runtime.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  await runtime.groups.requestApproval({ groupId: group.id, toolName: 'fs.read', timeoutMs: 60000 })
+  const route = ctx.registeredRoutes.get('/api/dsh-bot')
+  const res = await post(route, { endpoint: 'group.approvals', payload: { groupId: group.id } })
+  const body = await res.json()
+  assert.equal(body.ok, true)
+  assert.equal(body.result.approvals.length, 1, '已自动判定卡出现在群面板')
+  assert.equal(body.result.approvals[0].autoVerdict, 'allowed')
 })

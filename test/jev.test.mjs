@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildRouteQuestion, createJevJudge, resolveJevBackend, routeTurn } from '../lib/jev.js'
+import { buildRouteQuestion, createJevJudge, judgeApprovalDenial, resolveJevBackend, routeTurn } from '../lib/jev.js'
 
 const MEMBERS = [
   { id: 'bot-alice', name: 'Alice', description: '前端工程师' },
@@ -81,6 +81,17 @@ function fakeAutoDecide(answers, hooks = {}) {
   }
 }
 
+// 注意：once 语义是模块级标志（修复轮设计），必须放在本文件最前执行，
+// 否则会被前面「无 warn 捕获」的降级用例消耗掉。
+test('双后端：autoDecide 永不在 + builtin 兜底时，「未注入」warn 只 warn 一次（once 语义）', async () => {
+  const warnings = []
+  const judge = resolveJevBackend({ getAutoDecide: () => undefined, builtin: async () => ({}), warn: (m) => warnings.push(m) })
+  await judge({ state: 's', questions: {} })
+  await judge({ state: 's', questions: {} })
+  await judge({ state: 's', questions: {} })
+  assert.equal(warnings.length, 1, '模块级 once：多次调用只 warn 一次')
+})
+
 test('双后端：默认 autoDecide 优先，decode 结果透传为 judge answers', async () => {
   const auto = fakeAutoDecide({ responder: { type: 'choice', choice: 'bot-alice', confidence: 0.8, probabilities: { 'bot-alice': 0.8, none: 0.2 } } })
   let builtinCalls = 0
@@ -142,3 +153,27 @@ test('双后端：routeTurn 端到端——autoDecide 抛错时整体仍降级�
   assert.equal(result.responder, 'none')
   assert.equal(result.degraded, true)
 })
+
+// ---- 修复轮·fail-closed 缝隙：choice 缺失时绝不按概率放行 ----
+
+test('审批判定：choice 缺失且 p(false)>p(true) → uncertain（绝不按概率 allow，fail-closed）', async () => {
+  const auto = fakeAutoDecide({ deny: { type: 'noul', confidence: 0.6, probabilities: { true: 0.2, false: 0.8 } } })
+  const result = await judgeApprovalDenial(() => auto, { toolName: 'shell.run', summary: '重启服务' })
+  assert.equal(result.judgment, 'uncertain', '概率兜底已删除：choice 缺失一律 uncertain')
+})
+
+test('审批判定：choice 缺失且无概率 → uncertain', async () => {
+  const auto = fakeAutoDecide({ deny: { type: 'noul' } })
+  const result = await judgeApprovalDenial(() => auto, { toolName: 'x' })
+  assert.equal(result.judgment, 'uncertain')
+})
+
+test('审批判定：choice=true → deny；choice=false → allow；服务缺失 → unavailable', async () => {
+  const deny = await judgeApprovalDenial(() => fakeAutoDecide({ deny: { type: 'noul', choice: 'true' } }), { toolName: 'x' })
+  assert.equal(deny.judgment, 'deny')
+  const allow = await judgeApprovalDenial(() => fakeAutoDecide({ deny: { type: 'noul', choice: 'false' } }), { toolName: 'x' })
+  assert.equal(allow.judgment, 'allow')
+  const none = await judgeApprovalDenial(undefined, { toolName: 'x' })
+  assert.equal(none.judgment, 'unavailable')
+})
+
