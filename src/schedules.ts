@@ -42,10 +42,17 @@ export function attachBotSchedules(
       // 实测#4 诊断探针：定位宿主 schedule 服务的真实挂载点（定位后移除）
       try {
         const probe = ctx as unknown as Record<string, unknown>
-        const keys = Object.keys(probe).filter((k) => k.toLowerCase().includes('sched')).join(',') || 'none'
-        const getTry = typeof probe.get === 'function' ? typeof (probe.get as (n: string) => unknown)('schedule') : 'no-get'
-        protoTrace(`schedule 探针: ctx.schedule=${typeof probe.schedule} get('schedule')=${getTry} sched*keys=[${keys}]`)
-      } catch { /* 诊断失败不影响主流程 */ }
+        const desc = (k: string): string => {
+          const d = Object.getOwnPropertyDescriptor(probe, k)
+          if (!d) return 'no-own'
+          if (d.get) return `getter(try=${(() => { try { return typeof (d.get as () => unknown).call(probe) } catch (e) { return `throw:${(e as Error).message}` } })()})`
+          return `value=${typeof d.value}`
+        }
+        const protoNames: string[] = []
+        let p: object | null = probe as object
+        for (let i = 0; i < 4 && p; i++) { protoNames.push(Object.getPrototypeOf(p)?.constructor?.name ?? '?'); p = Object.getPrototypeOf(p) }
+        protoTrace(`schedule 探针: schedule[${desc('schedule')}] schedules[${desc('schedules')}] proto=[${protoNames.join('>')}] proto.schedule=${typeof (Object.getPrototypeOf(probe) as Record<string, unknown> | null)?.schedule} protoKeys=${Object.getOwnPropertyNames(Object.getPrototypeOf(probe) ?? {}).filter((k) => k.toLowerCase().includes('sched')).join(',') || 'none'}`)
+      } catch (e) { protoTrace(`schedule 探针异常: ${(e as Error).message}`) }
       throw new Error('dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）')
     }
     return schedule
