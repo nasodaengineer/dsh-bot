@@ -26,16 +26,15 @@ function nativeTeamsFake() {
   }
 }
 
-async function setup() {
+async function setup(overrides = {}) {
+  const agentTeams = overrides.tasks ?? {
+    async createTask(spec, caller) { return { id: 't1', ...spec, caller } },
+    async getTask(req) { return { id: req.id, title: '示例任务', status: 'todo' } },
+    async listTasks(_filter, _caller) { return [{ id: 't1', title: '示例任务', status: 'todo' }] },
+    async updateTask() { return {} },
+  }
   const ctx = fakeContext({
-    services: {
-      agentTeams: {
-        async createTask(spec, caller) { return { id: 't1', ...spec, caller } },
-        async getTask(req) { return { id: req.id, title: '示例任务', status: 'todo' } },
-        async listTasks(_filter, _caller) { return [{ id: 't1', title: '示例任务', status: 'todo' }] },
-        async updateTask() { return {} },
-      },
-    },
+    services: { agentTeams },
   })
   const runtime = apply(ctx, { rootSessionId: 'root-session', typesafe: { judge } })
   await flush()
@@ -104,6 +103,23 @@ test('端点：task.list / task.get 任务板只读查询', async () => {
   const got = await (await post(route, { endpoint: 'task.get', payload: { id: 't1' } })).json()
   assert.equal(got.ok, true)
   assert.equal(got.result.task.title, '示例任务')
+})
+
+test('实测#9：HTTP 调用方非 Team 成员时 task.* 诚实 503（不合成凭据、不假装空列表）', async () => {
+  const { route } = await setup({
+    tasks: {
+      async listTasks(_filter, _caller) { throw new Error('TeamError: agent "http-endpoint" is not a member of an active Agent Team') },
+      async getTask() { throw new Error('TeamError: agent "http-endpoint" is not a member of an active Agent Team') },
+    },
+  })
+  const listed = await (await post(route, { endpoint: 'task.list' }))
+  assert.equal(listed.status, 503)
+  const listedBody = await listed.json()
+  assert.match(listedBody.error, /不合成凭据/)
+  const got = await (await post(route, { endpoint: 'task.get', payload: { id: 't1' } }))
+  assert.equal(got.status, 503)
+  const gotBody = await got.json()
+  assert.match(gotBody.error, /不合成凭据/)
 })
 
 test('端点：bot.list 只读 Bot 名册（不暴露凭据等敏感字段）', async () => {

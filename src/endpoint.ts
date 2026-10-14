@@ -153,14 +153,26 @@ export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): Ht
         const tasks = deps.getTasks()
         if (tasks === undefined) return { status: 503, body: { ok: false, error: '任务板未就绪' } }
         const filter = (payload as { filter?: Record<string, unknown> } | undefined)?.filter
-        return { status: 200, body: { ok: true, result: { tasks: await tasks.listTasks(filter, caller) } } }
+        try {
+          return { status: 200, body: { ok: true, result: { tasks: await tasks.listTasks(filter, caller) } } }
+        } catch (error) {
+          // 实测#9：原生 TeamService 要求「确切的 live Team 成员」作权限凭据，
+          // HTTP 调用方不是成员（TeamError: not a member of an active Agent Team）。
+          // 原生安全模型禁止合成凭据 → 诚实降级，不假装空列表。
+          return { status: 503, body: { ok: false, error: `任务板需要 live Team 成员身份（HTTP 端点不合成凭据）：${String(error instanceof Error ? error.message : error)}` } }
+        }
       }
       case 'task.get': {
         const tasks = deps.getTasks()
         if (tasks === undefined) return { status: 503, body: { ok: false, error: '任务板未就绪' } }
         const id = (payload as { id?: unknown } | undefined)?.id
         if (typeof id !== 'string') return { status: 400, body: { ok: false, error: 'id 必填' } }
-        const task = await tasks.getTask({ id }, caller)
+        let task: unknown
+        try {
+          task = await tasks.getTask({ id }, caller)
+        } catch (error) {
+          return { status: 503, body: { ok: false, error: `任务板需要 live Team 成员身份（HTTP 端点不合成凭据）：${String(error instanceof Error ? error.message : error)}` } }
+        }
         if (task === undefined) return { status: 404, body: { ok: false, error: `任务 '${id}' 不存在` } }
         return { status: 200, body: { ok: true, result: { task } } }
       }
