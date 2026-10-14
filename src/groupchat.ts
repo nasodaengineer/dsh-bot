@@ -230,6 +230,20 @@ export function createGroupChatRuntime(
       messages.set(msg.groupId, list)
     }
     for (const list of messages.values()) list.sort((a, b) => a.seq - b.seq)
+    // 修复轮：full 档已判定卡从 KV 载回（面板重启后仍展示「已自动判定」结果）；
+    // 审计记录也一并载回。待批卡仍是易逝状态（重启后人工应答入口要重建），不恢复：fail-closed
+    for (const value of Object.values(snapshot.tables['approvals'] ?? {})) {
+      const rec = value as Record<string, unknown> & { __kind?: string }
+      if (rec.__kind === 'card') {
+        const card = rec as unknown as PendingApproval & { __kind: string }
+        decidedCards.set(card.id, {
+          id: card.id, groupId: card.groupId, toolName: card.toolName, summary: card.summary,
+          status: 'answered', createdAt: card.createdAt, autoVerdict: card.autoVerdict,
+        })
+      } else {
+        audits.push(rec as unknown as ApprovalAuditRecord)
+      }
+    }
     // 待批卡是易逝状态（进程重启后人工应答入口要重建），不恢复：fail-closed
   })()
 
@@ -241,21 +255,41 @@ export function createGroupChatRuntime(
     if (kvReady && kv !== undefined) await kv.putRecord('messages', `${message.groupId}:${message.seq}`, message)
   }
 
-  /** 系统提示写群历史（票 #16：limited 档「自动建议：拒绝」等提示） */
+  /** 系统提示写群历史（票 #16：limited 档「自动建议：拒绝」等提示）。appendMessage 的薄封装 */
   async function writeNotice(groupId: string, text: string): Promise<void> {
+    await appendMessage(groupId, 'system', text)
+  }
+
+  /**
+   * 修复轮·消息写入样板提炼：seq 自增 + 内存插入 + KV 尽力持久化（失败只 warn）。
+   * postMessage 的成员消息、writeNotice 的系统提示共用同一条写入路径。
+   */
+  async function appendMessage(groupId: string, from: string, text: string): Promise<GroupMessage> {
     seq += 1
-    const notice: GroupMessage = { groupId, seq, from: 'system', text, at: new Date().toISOString() }
+    const message: GroupMessage = { groupId, seq, from, text, at: new Date().toISOString() }
     const list = messages.get(groupId) ?? []
-    list.push(notice)
+    list.push(message)
     messages.set(groupId, list)
     try {
-      await persistMessage(notice)
+      await persistMessage(message)
     } catch (error) {
-      warn(`审批提示消息落 KV 失败：${String(error)}`)
+      warn(`消息落 KV 失败（保留内存记录）：${String(error)}`)
+    }
+    return message
+  }
+
+  /** 修复轮：full 档已判定卡的 KV 持久化（复用 approvals 表，__kind 区分卡与审计记录） */
+  async function persistDecidedCard(card: PendingApproval): Promise<void> {
+    if (kvReady && kv !== undefined) {
+      try {
+        await kv.putRecord('approvals', `card:${card.id}`, { __kind: 'card', ...card })
+      } catch (error) {
+        warn(`已判定卡落 KV 失败（保留内存记录）：${String(error)}`)
+      }
     }
   }
 
-  /** 票 #16：审计双写（内存必达 + KV 尽力），绝不抛错 */
+  /** 票 #16：审计双写（内存必达 + KV 尽力），绝不抛错。KV 不可用/写失败均显式 warn（修复轮：不再静默降级） */
   async function recordAudit(rec: Omit<ApprovalAuditRecord, 'id' | 'at'>): Promise<void> {
     auditSeq += 1
     const record: ApprovalAuditRecord = { id: `aud-${auditSeq}-${rec.approvalId}`, at: new Date().toISOString(), ...rec }
@@ -264,8 +298,10 @@ export function createGroupChatRuntime(
       try {
         await kv.putRecord('approvals', record.id, record)
       } catch (error) {
-        warn(`审批审计落 KV 失败（保留内存记录）：${String(error)}`)
+        warn(`审批审计落 KV 失败（审计降级内存，保留内存记录）：${String(error)}`)
       }
+    } else {
+      warn('审批审计降级内存（KV 不可用），重启即丢')
     }
   }
 
@@ -307,18 +343,8 @@ export function createGroupChatRuntime(
     async postMessage(input) {
       const group = groups.get(input.groupId)
       if (group === undefined) throw new Error(`dsh-bot: 未知群 '${input.groupId}'`)
-      seq += 1
-      const message: GroupMessage = {
-        groupId: group.id,
-        seq,
-        from: input.from,
-        text: input.text,
-        at: new Date().toISOString(),
-      }
+      const message = await appendMessage(group.id, input.from, input.text)
       const list = messages.get(group.id) ?? []
-      list.push(message)
-      messages.set(group.id, list)
-      await persistMessage(message)
 
       const members: JevRouteMember[] = group.memberIds.map((id) => ({ id }))
       const transcript: JevRouteMessage[] = list.slice(-12).map((m) => ({ from: m.from, text: m.text }))
@@ -329,18 +355,9 @@ export function createGroupChatRuntime(
         result = await routeTurn({ members, transcript }, opts.judge)
       }
       if (result.responder === 'none') {
-        seq += 1
-        const notice: GroupMessage = {
-          groupId: group.id,
-          seq,
-          from: 'system',
-          text: result.degraded === true
-            ? `（Jev 路由不可用，本轮无人响应：${result.reason ?? '未知原因'}）`
-            : '（本轮无人响应）',
-          at: new Date().toISOString(),
-        }
-        list.push(notice)
-        await persistMessage(notice)
+        await appendMessage(group.id, 'system', result.degraded === true
+          ? `（Jev 路由不可用，本轮无人响应：${result.reason ?? '未知原因'}）`
+          : '（本轮无人响应）')
         return { responder: 'none', degraded: result.degraded, reason: result.reason, message }
       }
       const delivery = { sessionId: group.sessionId, responder: result.responder, message }
@@ -371,32 +388,29 @@ export function createGroupChatRuntime(
       // 票 #16·full 档：收到审批即判一次。允许→直接代答 allowed-once（卡片保留展示）；
       // 拒绝/不确定→reject；autoDecide 不可用→回退人工等待（manual 语义，fail-closed）。
       if (approvalTier === 'full') {
+        // 修复轮·审计四元组提炼（同 limited 档 auditBase 先例）
+        const auditBase = {
+          approvalId: card.id, groupId: card.groupId, toolName: card.toolName, summary: card.summary,
+          tier: 'full' as const, source: 'auto' as const,
+        }
         try {
           const j = await judgeApprovalDenial(opts.getAutoDecide, { toolName: input.toolName, summary: input.summary })
           if (j.judgment === 'allow') {
-            await recordAudit({
-              approvalId: card.id, groupId: card.groupId, toolName: card.toolName, summary: card.summary,
-              tier: 'full', source: 'auto', judgment: 'allow', outcome: 'allowed-once', basis: j.basis,
-              probabilities: j.probabilities, confidence: j.confidence,
-            })
-            decidedCards.set(card.id, { ...card, status: 'answered', autoVerdict: 'allowed' })
+            await recordAudit({ ...auditBase, judgment: 'allow', outcome: 'allowed-once', basis: j.basis, probabilities: j.probabilities, confidence: j.confidence })
+            const decided: PendingApproval = { ...card, status: 'answered', autoVerdict: 'allowed' }
+            decidedCards.set(decided.id, decided)
+            await persistDecidedCard(decided)
             return { granted: true, outcome: 'allowed-once' }
           }
           if (j.judgment === 'deny' || j.judgment === 'uncertain') {
-            await recordAudit({
-              approvalId: card.id, groupId: card.groupId, toolName: card.toolName, summary: card.summary,
-              tier: 'full', source: 'auto', judgment: j.judgment, outcome: 'rejected', basis: j.basis,
-              probabilities: j.probabilities, confidence: j.confidence,
-            })
-            decidedCards.set(card.id, { ...card, status: 'answered', autoVerdict: 'rejected' })
+            await recordAudit({ ...auditBase, judgment: j.judgment, outcome: 'rejected', basis: j.basis, probabilities: j.probabilities, confidence: j.confidence })
+            const decided: PendingApproval = { ...card, status: 'answered', autoVerdict: 'rejected' }
+            decidedCards.set(decided.id, decided)
+            await persistDecidedCard(decided)
             return { granted: false, outcome: 'rejected' }
           }
           // unavailable：同样落审计（fail-closed 回退证据），但不代答
-          await recordAudit({
-            approvalId: card.id, groupId: card.groupId, toolName: card.toolName, summary: card.summary,
-            tier: 'full', source: 'auto', judgment: 'unavailable', basis: j.basis,
-            probabilities: j.probabilities, confidence: j.confidence,
-          })
+          await recordAudit({ ...auditBase, judgment: 'unavailable', basis: j.basis, probabilities: j.probabilities, confidence: j.confidence })
           warn(`full 档 autoDecide 不可用（${j.basis ?? '未知原因'}），审批 '${card.id}' 回退人工等待，不代答`)
         } catch (error) {
           warn(`full 档自动判定异常，审批 '${card.id}' 回退人工等待：${String(error)}`)
@@ -474,14 +488,17 @@ export function createGroupChatRuntime(
     async answerApproval(id, outcome) {
       const waiter = waiters.get(id)
       if (waiter === undefined) throw new Error(`dsh-bot: 未知待批卡 '${id}'（已应答或不存在）`)
-      const card = pending.get(id)
+      // 修复轮：卡从 pending ∪ decidedCards（含 KV 载回）解析；解析不到直接抛错，
+      // 绝不写 groupId/toolName 为空串的审计记录
+      const card = pending.get(id) ?? decidedCards.get(id)
+      if (card === undefined) throw new Error(`dsh-bot: 待批卡 '${id}' 缺少卡记录，拒绝记审计（fail-closed）`)
       // 票 #16：人工代答也落审计（source=human）
       try {
         await recordAudit({
-          approvalId: id,
-          groupId: card?.groupId ?? '',
-          toolName: card?.toolName ?? '',
-          summary: card?.summary,
+          approvalId: card.id,
+          groupId: card.groupId,
+          toolName: card.toolName,
+          summary: card.summary,
           tier: approvalTier,
           source: 'human',
           judgment: isGranted(outcome) ? 'allow' : 'deny',
