@@ -112,11 +112,18 @@ export function fakeContext({ services = {}, disable = [], storage = true } = {}
 
   // ---- P1 服务 mock（票 #6，签名对齐 0.2.1-alpha.2）----
   let selectModelCalls = 0
+  const promptsReceived = []
   services.sessionController = services.sessionController ?? {
     async selectModel(req) {
       selectModelCalls += 1
       calls.push(`selectModel provider=${req.provider} model=${req.model} session=${req.sessionId}`)
       return { selected: { provider: req.provider, model: req.model, reasoningEffort: req.reasoningEffort } }
+    },
+    // 群投递接线（票 #7）：prompt 入列
+    async prompt(request) {
+      calls.push(`session prompt ${request.sessionId} mode=${request.mode}`)
+      promptsReceived.push(request)
+      return { accepted: true }
     },
     calls: () => selectModelCalls,
   }
@@ -185,6 +192,17 @@ export function fakeContext({ services = {}, disable = [], storage = true } = {}
   let scheduleSeq = 0
   const schedules = []
   ctx.schedules = schedules
+  // 群载体：动态建隐藏 root Session（实测#7）；services 注入面与 ctx 弱读面都要可见
+  let sessionSeq = 0
+  services.sessions = services.sessions ?? {
+    create() {
+      sessionSeq += 1
+      calls.push(`session create root-${sessionSeq}`)
+      return { id: `root-created-${sessionSeq}` }
+    },
+  }
+  ctx.sessions = services.sessions
+  ctx.promptsReceived = promptsReceived
   services.schedule = services.schedule ?? {
     async create(sessionId, request) {
       scheduleSeq += 1

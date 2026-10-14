@@ -101,11 +101,11 @@ export interface ApprovalCard {
   readonly status: 'pending' | 'answered'
 }
 
-/** 宿主侧投递：把群消息转成对隐藏 root Session 的输入 */
+/** 宿主侧投递：把群消息转成对隐藏 root Session 的输入（可异步，rejection 由 postMessage 捕获） */
 export type GroupDeliverer = (
   groupId: string,
   delivery: { sessionId: string; responder: string; message: GroupMessage },
-) => void
+) => void | Promise<void>
 
 /**
  * A2·隐藏 root Session 载体：宿主侧创建/复用群聊执行 Session。
@@ -156,6 +156,8 @@ export interface GroupChatRuntime {
   ensureReady(): Promise<boolean>
   /** 宿主注入投递实现；未注入时投递降级为日志（不丢消息记录） */
   setDeliverer(deliverer: GroupDeliverer): void
+  /** 群投递接线：按群载体 SessionId 反查群（审批拦截过滤器用）；未命中返回 undefined */
+  groupBySession(sessionId: string): GroupRecord | undefined
   /** 一轮投递：路由 → 投递或降级；返回本轮判定 */
   postMessage(input: { groupId: string; from: string; text: string }): Promise<{
     responder: string
@@ -362,6 +364,14 @@ export function createGroupChatRuntime(
       deliverer = fn
     },
 
+    groupBySession(sessionId) {
+      if (typeof sessionId !== 'string' || sessionId === '') return undefined
+      for (const group of groups.values()) {
+        if (group.sessionId === sessionId) return group
+      }
+      return undefined
+    },
+
     async postMessage(input) {
       const group = groups.get(input.groupId)
       if (group === undefined) throw new Error(`dsh-bot: 未知群 '${input.groupId}'`)
@@ -387,7 +397,8 @@ export function createGroupChatRuntime(
         warn(`群 '${group.name}' 未注入投递实现，本轮判定 ${result.responder} 只记录不投递`)
       } else {
         try {
-          deliverer(group.id, delivery)
+          // deliverer 可异步（如 sessionController.prompt），rejection 同样就地捕获，不逃逸
+          await deliverer(group.id, delivery)
         } catch (error) {
           warn(`群投递失败：${String(error)}`)
         }

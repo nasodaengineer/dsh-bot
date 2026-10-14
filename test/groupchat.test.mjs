@@ -6,7 +6,7 @@ import { apply } from '../lib/index.js'
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
 // 组装一个带群聊运行时的完整插件实例（mock agentTeams + jev judge）
-async function setup({ judge } = {}) {
+async function setup({ judge, services: extraServices } = {}) {
   const teamsCalls = []
   const nativeTeams = {
     async membership(c) { teamsCalls.push(['membership', c]); return { teamId: 'root' } },
@@ -21,7 +21,7 @@ async function setup({ judge } = {}) {
     async waitForChange(f, o, c) { return { changed: true } },
     async interrupt(t, c) { return { ok: true } },
   }
-  const ctx = fakeContext({ services: { agentTeams: nativeTeams } })
+  const ctx = fakeContext({ services: { agentTeams: nativeTeams, ...extraServices } })
   const runtime = apply(ctx, {
     rootSessionId: 'root-session',
     typesafe: judge === undefined ? undefined : { judge },
@@ -169,4 +169,76 @@ test('A6·审批超时：超时 fail-closed（granted=false）并清待批卡', 
   assert.equal(runtime.groups.listPendingApprovals(group.id).length, 0, '待批卡已清')
   // 超时后再人工应答 → 未知卡报错（waiter 已清）
   await assert.rejects(() => runtime.groups.answerApproval('apr-timeout', 'allowed-once'), /未知待批卡/)
+})
+
+// ---- 群投递 + 审批拦截接线（sessionController.prompt + approval/request 瀑布）----
+
+test('接线·groupBySession：命中群载体 Session / 未命中返回 undefined', async () => {
+  const { runtime } = await setup()
+  const group = await runtime.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  assert.equal(runtime.groups.groupBySession('root-session')?.id, group.id)
+  assert.equal(runtime.groups.groupBySession('other-session'), undefined)
+})
+
+test('接线·投递：deliverer 走 sessionController.prompt 入列群载体 Session（index 级接线）', async () => {
+  const prompts = []
+  const { runtime } = await setup({
+    judge: async () => ({ responder: { type: 'choice', choice: 'bot-a', confidence: 0.8 } }),
+    services: {
+      sessionController: {
+        async selectModel() { return {} },
+        async prompt(request) { prompts.push(request); return { accepted: true } },
+      },
+    },
+  })
+  const group = await runtime.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  const result = await runtime.groups.postMessage({ groupId: group.id, from: 'user', text: '帮我跑测试' })
+  assert.equal(result.responder, 'bot-a')
+  assert.equal(prompts.length, 1, '投递应经 sessionController.prompt 入列')
+  const req = prompts[0]
+  assert.equal(req.sessionId, 'root-session')
+  assert.equal(req.mode, 'queue')
+  assert.ok(typeof req.requestId === 'string' && req.requestId.length > 0, '应有 client 侧 requestId')
+  assert.ok(Array.isArray(req.content) && req.content.length === 1 && req.content[0].type === 'text')
+  assert.ok(req.content[0].text.includes(group.id), 'prompt 应标明群 id')
+  assert.ok(req.content[0].text.includes('帮我跑测试'), 'prompt 携带原消息')
+})
+
+test('接线·投递：async deliverer 抛错不炸 postMessage（降级 warn）', async () => {
+  const judge = async () => ({ responder: { type: 'choice', choice: 'bot-a', confidence: 0.8 } })
+  const { runtime } = await setup({ judge })
+  runtime.groups.setDeliverer(async () => { throw new Error('prompt 爆炸') })
+  const group = await runtime.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  const result = await runtime.groups.postMessage({ groupId: group.id, from: 'user', text: 'hi' })
+  assert.equal(result.responder, 'bot-a', '投递失败不影响本轮判定与记录')
+  const history = await runtime.groups.history(group.id)
+  assert.equal(history[0].text, 'hi', '消息已入群史')
+})
+
+test('接线·审批拦截：群 Session 的 approval/request 转待批卡，人工应答后回灌 outcome', async () => {
+  const { runtime, ctx } = await setup()
+  const group = await runtime.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  const handlers = ctx.listeners.get('approval/request') ?? []
+  assert.ok(handlers.length >= 1, '应注册 approval/request 瀑布监听')
+  const handler = handlers[handlers.length - 1]
+  let nextCalled = 0
+  const next = async () => { nextCalled += 1; return 'allowed-once' }
+  const decisionPromise = handler({ agent: { session: { id: 'root-session' } }, toolName: 'pwsh', reason: 'rm -rf tmp' }, next)
+  const pending = runtime.groups.listPendingApprovals(group.id)
+  assert.equal(pending.length, 1, '群 Session 的审批应转成待批卡')
+  assert.equal(pending[0].toolName, 'pwsh')
+  assert.equal(nextCalled, 0, '群 Session 的请求由 dsh-bot 认领，不再下传')
+  await runtime.groups.answerApproval(pending[0].id, 'rejected')
+  const outcome = await decisionPromise
+  assert.equal(outcome, 'rejected')
+})
+
+test('接线·审批拦截：非群 Session 的请求立即 next() 放行下传', async () => {
+  const { runtime, ctx } = await setup()
+  await runtime.groups.createGroup({ name: 'g', memberIds: ['bot-a'] })
+  const handler = (ctx.listeners.get('approval/request') ?? []).pop()
+  let nextCalled = 0
+  const outcome = await handler({ agent: { session: { id: 'user-session-1' } }, toolName: 'pwsh' }, async () => { nextCalled += 1; return 'allowed-once' })
+  assert.equal(nextCalled, 1)
+  assert.equal(outcome, 'allowed-once')
 })

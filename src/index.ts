@@ -310,6 +310,49 @@ function attachRuntimes(
       approvalTier: options.typesafe?.approval,
       getAutoDecide: () => autoDecideRef.service,
     })
+
+    // 群投递接线（票 #7）：sessionController.prompt 入列群载体 Session
+    // （dsh-api-session-controller index.d.ts:169 签名：prompt(request, signal) → {accepted}）
+    const sessionCtrlRef: { ctrl?: { prompt(request: unknown, signal: AbortSignal): Promise<unknown> } } = {}
+    ctx.inject(['sessionController'], (services) => {
+      sessionCtrlRef.ctrl = services.sessionController as { prompt(request: unknown, signal: AbortSignal): Promise<unknown> }
+    })
+    runtime.groups.setDeliverer(async (groupId, delivery) => {
+      const ctrl = sessionCtrlRef.ctrl
+      if (ctrl === undefined) {
+        throw new Error('dsh-bot: sessionController 服务未挂载，群投递不可用')
+      }
+      const text = typeof delivery.message?.text === 'string' ? delivery.message.text : ''
+      const promptText = [
+        `【dsh-bot 群聊 ${groupId} · 本轮轮到成员 '${delivery.responder}'】`,
+        text,
+        `（请以群成员 '${delivery.responder}' 的身份处理；本消息由 dsh-bot 群聊投递）`,
+      ].join('\n')
+      const requestId = `dsh-bot-group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+      const request = {
+        requestId,
+        sessionId: delivery.sessionId,
+        mode: 'queue' as const,
+        content: [{ type: 'text' as const, text: promptText }],
+      }
+      await ctrl.prompt(request, new AbortController().signal)
+    })
+
+    // 审批拦截接线（票 #7/#16）：全局 approval/request 瀑布监听 + 群载体 Session 过滤。
+    // 非群会话立即 next() 下传（零行为变化）；群会话认领 → 待批卡 → 人工应答回灌 outcome。
+    // fail-closed：requestApproval 超时/不可用返回 'unavailable'（宿主语义：调用方 fail closed）。
+    ctx.on('approval/request', async (raw, next) => {
+      const req = raw as { agent?: { session?: { id?: unknown } }; toolName?: unknown; reason?: unknown }
+      const sessionId = req?.agent?.session?.id
+      const group = typeof sessionId === 'string' ? runtime.groups?.groupBySession(sessionId) : undefined
+      if (group === undefined) return next()
+      const decision = await runtime.groups.requestApproval({
+        groupId: group.id,
+        toolName: typeof req.toolName === 'string' ? req.toolName : 'unknown',
+        summary: typeof req.reason === 'string' ? req.reason : undefined,
+      })
+      return decision.outcome
+    })
   })
 }
 
