@@ -43,6 +43,8 @@ export interface TypesafeOptions {
   readonly endpoint?: string
   readonly judge?: JevJudge
   readonly decision?: 'autoDecide' | 'builtin'
+  /** 票 #16：审批三档 manual|limited|full（默认 manual；沿用本读取面，键名 approval） */
+  readonly approval?: 'manual' | 'limited' | 'full'
 }
 
 export interface DshBotRuntime {
@@ -270,6 +272,9 @@ function attachRuntimes(
       store,
       judge,
       ensureSession: createRootSessionCarrier({ rootSessionId: options.rootSessionId }),
+      // 票 #16：审批三档 + autoDecide 弱读（limited/full 档自动判定，不可用回退 manual 语义）
+      approvalTier: options.typesafe?.approval,
+      getAutoDecide: () => autoDecideRef.service,
     })
   })
 }
