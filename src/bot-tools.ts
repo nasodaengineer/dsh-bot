@@ -78,6 +78,15 @@ export interface BotToolsDeps {
   readonly getTemplates: () => TemplateStore | undefined
 }
 
+/** 实测#4：宿主 execute 第二参 exec 携带 agent（dsh-tools index.d.ts:128/229），
+ * 例程绑会话用 exec.agent.session.id（宿主 dsh-tool-schedule 同款）。 */
+type ToolExec = { agent?: { session?: { id?: unknown } } }
+
+const sessionIdOf = (exec: unknown): string => {
+  const id = (exec as ToolExec | undefined)?.agent?.session?.id
+  return typeof id === 'string' ? id : ''
+}
+
 /** execute 统一包装：工具永不抛错 */
 async function safeExecute(fn: () => Promise<unknown>): Promise<unknown> {
   try {
@@ -196,11 +205,11 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
       },
       required: ['title', 'prompt'],
     },
-    execute: (args) =>
+    execute: (args, exec) =>
       safeExecute(async () => {
         const schedules = deps.getSchedules()
         if (schedules === undefined) return { error: 'dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）' }
-        return schedules.create(args as unknown as ScheduleCreateRequest)
+        return schedules.create(sessionIdOf(exec), args as unknown as ScheduleCreateRequest)
       }),
   })
 
@@ -208,13 +217,13 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
     name: 'bot_schedule_delete',
     description: '删除一个已创建的 Bot 例程（按 record id）',
     parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-    execute: (args) =>
+    execute: (args, exec) =>
       safeExecute(async () => {
         const schedules = deps.getSchedules()
         if (schedules === undefined) return { error: 'dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）' }
         const id = (args as { id?: string }).id
         if (typeof id !== 'string' || id === '') return { error: 'dsh-bot: 缺少例程 id' }
-        const deleted = await schedules.delete(id)
+        const deleted = await schedules.delete(sessionIdOf(exec), id)
         return { deleted }
       }),
   })
@@ -223,11 +232,11 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
     name: 'bot_schedule_list',
     description: '列出当前 Bot 在 root Session 上的全部例程',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
-    execute: () =>
+    execute: (_args, exec) =>
       safeExecute(async () => {
         const schedules = deps.getSchedules()
         if (schedules === undefined) return { error: 'dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）' }
-        return { schedules: await schedules.list() }
+        return { schedules: await schedules.list(sessionIdOf(exec)) }
       }),
   })
 
@@ -236,13 +245,13 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
     name: 'bot_schedule_pause',
     description: '暂停一个 Bot 例程（记住请求并从宿主删除；恢复用 bot_schedule_resume，record id 会变）',
     parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-    execute: (args) =>
+    execute: (args, exec) =>
       safeExecute(async () => {
         const schedules = deps.getSchedules()
         if (schedules === undefined) return { error: 'dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）' }
         const id = (args as { id?: string }).id
         if (typeof id !== 'string' || id === '') return { error: 'dsh-bot: 缺少例程 id' }
-        const paused = await schedules.pause(id)
+        const paused = await schedules.pause(sessionIdOf(exec), id)
         return paused === true ? { paused: true } : { error: `dsh-bot: 例程 '${id}' 不可暂停（未知或非本插件创建的例程）` }
       }),
   })
@@ -251,13 +260,13 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
     name: 'bot_schedule_resume',
     description: '恢复一个已暂停的 Bot 例程（按记住的请求重建，返回新 record id）',
     parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-    execute: (args) =>
+    execute: (args, exec) =>
       safeExecute(async () => {
         const schedules = deps.getSchedules()
         if (schedules === undefined) return { error: 'dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）' }
         const id = (args as { id?: string }).id
         if (typeof id !== 'string' || id === '') return { error: 'dsh-bot: 缺少例程 id' }
-        const record = await schedules.resume(id)
+        const record = await schedules.resume(sessionIdOf(exec), id)
         return record === undefined
           ? { error: `dsh-bot: 例程 '${id}' 不可恢复（没有暂停记录）` }
           : { record, note: '恢复后的例程 record id 已变，旧 id 失效' }
@@ -396,13 +405,13 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
       properties: { templateId: { type: 'string' }, name: { type: 'string' } },
       required: ['templateId'],
     },
-    execute: (args) =>
+    execute: (args, exec) =>
       safeExecute(async () => {
         const store = deps.getTemplates()
         if (store === undefined) return { error: 'dsh-bot: 模板仓库未就绪' }
         const a = args as { templateId?: string; name?: string }
         if (typeof a.templateId !== 'string') return { error: 'dsh-bot: templateId 必填' }
-        return store.importTemplate(a.templateId, { name: a.name })
+        return store.importTemplate(a.templateId, { name: a.name }, sessionIdOf(exec))
       }),
   })
 

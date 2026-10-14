@@ -239,24 +239,22 @@ function attachRuntimes(
   // @deepseek-ai/dsh-schedule）。优先主树 inject 到齐捕获引用（工具执行在 worker
   // 门面 ctx 上，其 schedule getter 恒 undefined，不能依赖执行期弱读）；
   // 同时保留惰性弱读兜底（api-remotes 增强场景）。
+  // sessionId 不再来自装配方（rootSessionId 通常无人传）：bot_schedule_* 执行期
+  // 从 exec.agent.session.id 取（宿主 dsh-tool-schedule 同款），preferredSessionId
+  // 仅作为显式配置时的优先值。
   {
-    const rootSessionId = options.rootSessionId
-    if (rootSessionId === undefined) {
-      ctx.logger?.warn('dsh-bot: 未配置 rootSessionId，例程运行时不挂载（例程必须绑定 root Session）')
-    } else {
-      const scheduleRef: { service?: ScheduleService } = {}
-      try {
-        ctx.inject(['schedule'], (services) => {
-          scheduleRef.service = services.schedule as ScheduleService
-        })
-      } catch (error) {
-        ctx.logger?.warn(`dsh-bot: 订阅 schedule 服务失败（例程将走惰性弱读）：${String(error)}`)
-      }
-      runtime.schedules = attachBotSchedules(ctx, {
-        schedule: () => scheduleRef.service ?? (ctx as unknown as { schedule?: ScheduleService }).schedule,
-        rootSessionId,
+    const scheduleRef: { service?: ScheduleService } = {}
+    try {
+      ctx.inject(['schedule'], (services) => {
+        scheduleRef.service = services.schedule as ScheduleService
       })
+    } catch (error) {
+      ctx.logger?.warn(`dsh-bot: 订阅 schedule 服务失败（例程将走惰性弱读）：${String(error)}`)
     }
+    runtime.schedules = attachBotSchedules(ctx, {
+      schedule: () => scheduleRef.service ?? (ctx as unknown as { schedule?: ScheduleService }).schedule,
+      preferredSessionId: options.rootSessionId,
+    })
   }
 
   // 票 #14：决策双后端。autoDecide 服务是运行期可选依赖（dsh-auto-decide 提供），

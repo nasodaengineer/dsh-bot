@@ -60,12 +60,12 @@ test('模板：导入不带记忆的模板，新 Bot 无记忆', async () => {
 
 test('模板：技能随模板（例程标题清单在模板里），导入后例程重建', async () => {
   const { runtime } = await setup()
-  const created = await runtime.schedules.create({ title: '日报', prompt: '写日报', every_seconds: 3600 })
+  const created = await runtime.schedules.create('s', { title: '日报', prompt: '写日报', every_seconds: 3600 })
   const tpl = await runtime.templates.exportTemplate('bot-a', { includeMemory: false })
   assert.deepEqual(tpl.skills.scheduleTitles, ['日报'], '例程技能打包进模板')
   const result = await runtime.templates.importTemplate(tpl.id, {})
   assert.ok(result.restoredSchedules >= 1, '导入时例程重建')
-  const list = await runtime.schedules.list()
+  const list = await runtime.schedules.list('s')
   assert.ok(list.some((s) => s.title === '日报'), '重建后例程存在')
   void created
 })
@@ -80,7 +80,7 @@ test('模板：未知 Bot 导出、未知模板导入都报错不抛穿由工具
 
 test('C11·模板导出保存完整 ScheduleCreateRequest（timing+prompt 原样），导入按原样重建', async () => {
   const { runtime } = await setup()
-  const created = await runtime.schedules.create({ title: '日报', prompt: '把今日构建日志整理成日报', every_seconds: 3600 })
+  const created = await runtime.schedules.create('s', { title: '日报', prompt: '把今日构建日志整理成日报', every_seconds: 3600 })
   const tpl = await runtime.templates.exportTemplate('bot-a', { includeMemory: false })
   assert.equal(tpl.skills.schedules.length, 1)
   const saved = tpl.skills.schedules[0]
@@ -90,7 +90,7 @@ test('C11·模板导出保存完整 ScheduleCreateRequest（timing+prompt 原样
   assert.equal(saved.promptTruncated, undefined)
   const result = await runtime.templates.importTemplate(tpl.id, {})
   assert.equal(result.restoredSchedules, 1)
-  const list = await runtime.schedules.list()
+  const list = await runtime.schedules.list('s')
   const rebuilt = list.find((s) => s.title === '日报' && s.id !== created.id)
   assert.ok(rebuilt, '重建出例程')
   assert.equal(rebuilt.prompt, '把今日构建日志整理成日报', '重建用原 prompt（无占位符）')
@@ -99,7 +99,7 @@ test('C11·模板导出保存完整 ScheduleCreateRequest（timing+prompt 原样
 
 test('C11·超长 prompt 截断并标记 promptTruncated', async () => {
   const { runtime } = await setup()
-  await runtime.schedules.create({ title: '长例程', prompt: 'x'.repeat(3000), every_seconds: 60 })
+  await runtime.schedules.create('s', { title: '长例程', prompt: 'x'.repeat(3000), every_seconds: 60 })
   const tpl = await runtime.templates.exportTemplate('bot-a', { includeMemory: false })
   const saved = tpl.skills.schedules[0]
   assert.equal(saved.prompt.length, 2000)

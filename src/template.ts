@@ -80,7 +80,7 @@ export interface TemplateStoreDeps {
 
 export interface TemplateStore {
   exportTemplate(botId: string, options: { includeMemory: boolean; name?: string }): Promise<TemplateRecord>
-  importTemplate(templateId: string, options: { name?: string }): Promise<{
+  importTemplate(templateId: string, options: { name?: string }, sessionId?: string): Promise<{
     botId: string
     restoredSchedules: number
     restoredMemory: number
@@ -163,7 +163,7 @@ export async function createTemplateStore(ctx: HostContext, deps: TemplateStoreD
       return record
     },
 
-    async importTemplate(templateId, options) {
+    async importTemplate(templateId, options, sessionId) {
       const tpl = templates.get(templateId)
       if (tpl === undefined) throw new Error(`dsh-bot: 未知模板 '${templateId}'`)
       importSeq += 1
@@ -195,10 +195,12 @@ export async function createTemplateStore(ctx: HostContext, deps: TemplateStoreD
       if (schedules === undefined) {
         if (tpl.skills.scheduleTitles.length > 0) warn('schedule 服务未挂载，模板例程未重建（接缝：宿主开 Automation 后可用 bot_schedule_create 手工重建）')
       } else {
-        // C11：按原样重建完整创建请求（不再用占位 prompt / 硬编码 every_seconds）
+        // C11：按原样重建完整创建请求（不再用占位 prompt / 硬编码 every_seconds）。
+        // 实测#4：绑定到导入发起时的会话（bot_template_import 传 exec.agent.session.id）。
+        const sid = typeof sessionId === 'string' ? sessionId : ''
         for (const request of tpl.skills.schedules) {
           try {
-            await schedules.create({ ...request, prompt: request.prompt })
+            await schedules.create(sid, { ...request, prompt: request.prompt })
             restoredSchedules += 1
           } catch (error) {
             warn(`例程 '${request.title}' 重建失败：${String(error)}`)
