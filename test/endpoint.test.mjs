@@ -80,6 +80,22 @@ test('端点：group.list 只读群列表', async () => {
   assert.ok(body.result.groups[0].name)
 })
 
+test('实测#6·group.create：端点建群（name/memberIds 校验，入 group.list）', async () => {
+  const { route, runtime } = await setup()
+  const missing = await post(route, { endpoint: 'group.create', payload: {} })
+  assert.equal(missing.status, 400)
+  const emptyMembers = await post(route, { endpoint: 'group.create', payload: { name: 'x', memberIds: [] } })
+  assert.equal(emptyMembers.status, 400)
+  const ok = await post(route, { endpoint: 'group.create', payload: { name: '测试群', memberIds: ['bot-a'] } })
+  assert.equal(ok.status, 200)
+  const body = await ok.json()
+  assert.equal(body.ok, true)
+  assert.equal(body.result.group.name, '测试群')
+  const list = await (await post(route, { endpoint: 'group.list' })).json()
+  assert.ok(list.result.groups.some((g) => g.id === body.result.group.id))
+  assert.ok(runtime.groups)
+})
+
 test('端点：task.list / task.get 任务板只读查询', async () => {
   const { route } = await setup()
   const listed = await (await post(route, { endpoint: 'task.list' })).json()

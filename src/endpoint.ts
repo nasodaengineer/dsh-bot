@@ -131,6 +131,21 @@ export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): Ht
         if (groups === undefined) return { status: 503, body: { ok: false, error: '群聊运行时未就绪' } }
         return { status: 200, body: { ok: true, result: { groups: await groups.listGroups() } } }
       }
+      case 'group.create': {
+        // 实测#6：此前建群只有 facade 入口，端点补上闭环（name/memberIds 必填）
+        const groups = deps.getGroups()
+        if (groups === undefined) return { status: 503, body: { ok: false, error: '群聊运行时未就绪' } }
+        if (!groups.sessionReady()) return { status: 503, body: { ok: false, error: '群聊载体 Session 不可用' } }
+        const p = payload as { name?: unknown; memberIds?: unknown } | undefined
+        if (typeof p?.name !== 'string' || p.name.trim() === '') {
+          return { status: 400, body: { ok: false, error: 'name 必填' } }
+        }
+        if (!Array.isArray(p.memberIds) || p.memberIds.length === 0 || !p.memberIds.every((m) => typeof m === 'string' && m.trim() !== '')) {
+          return { status: 400, body: { ok: false, error: 'memberIds 必填（非空字符串数组）' } }
+        }
+        const group = await groups.createGroup({ name: p.name.trim(), memberIds: p.memberIds.map((m) => (m as string).trim()) })
+        return { status: 200, body: { ok: true, result: { group } } }
+      }
       case 'task.list': {
         const tasks = deps.getTasks()
         if (tasks === undefined) return { status: 503, body: { ok: false, error: '任务板未就绪' } }
