@@ -74,8 +74,8 @@ export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): Ht
       case 'group.message': {
         const groups = deps.getGroups()
         if (groups === undefined) return { status: 503, body: { ok: false, error: '群聊运行时未就绪' } }
-        // A2：载体 Session 不可用时群聊拒绝服务，不假装在工作
-        if (!groups.sessionReady()) return { status: 503, body: { ok: false, error: '群聊载体 Session 不可用' } }
+        // 实测#7：创建路径晚到可 await 重试（A2：仍不可用则拒绝服务，不假装在工作）
+        if (!(await groups.ensureReady())) return { status: 503, body: { ok: false, error: '群聊载体 Session 不可用' } }
         const p = payload as { groupId?: unknown; from?: unknown; text?: unknown } | undefined
         if (typeof p?.groupId !== 'string' || typeof p?.text !== 'string') {
           return { status: 400, body: { ok: false, error: 'groupId 与 text 必填' } }
@@ -135,7 +135,7 @@ export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): Ht
         // 实测#6：此前建群只有 facade 入口，端点补上闭环（name/memberIds 必填）
         const groups = deps.getGroups()
         if (groups === undefined) return { status: 503, body: { ok: false, error: '群聊运行时未就绪' } }
-        if (!groups.sessionReady()) return { status: 503, body: { ok: false, error: '群聊载体 Session 不可用' } }
+        if (!(await groups.ensureReady())) return { status: 503, body: { ok: false, error: '群聊载体 Session 不可用' } }
         const p = payload as { name?: unknown; memberIds?: unknown } | undefined
         if (typeof p?.name !== 'string' || p.name.trim() === '') {
           return { status: 400, body: { ok: false, error: 'name 必填' } }

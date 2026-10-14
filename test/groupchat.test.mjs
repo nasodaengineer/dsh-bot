@@ -125,7 +125,7 @@ test('A2·载体：无法解析 Session → 建群 fail-visible 拒绝，群聊�
   await new Promise((resolve) => setImmediate(resolve))
   assert.equal(groups.sessionReady(), false)
   await assert.rejects(() => groups.createGroup({ name: 'g', memberIds: ['bot-a'] }), /载体 Session 不可用/)
-  assert.ok(ctx.warnings.some((w) => w.includes('群聊载体 Session 不可用')), 'warn 降级可见')
+  assert.ok(ctx.warnings.some((w) => w.includes('群聊载体 Session 暂不可用')), 'warn 降级可见')
 })
 
 test('A2·载体：carrier 复用同一 sessionId（ensure 幂等）', async () => {
@@ -133,6 +133,27 @@ test('A2·载体：carrier 复用同一 sessionId（ensure 幂等）', async () 
   const carrier = createRootSessionCarrier({ rootSessionId: 'root-x' })
   assert.equal(await carrier.ensure(), 'root-x')
   assert.equal(await carrier.ensure(), 'root-x')
+})
+
+test('实测#7·载体：createSession 路径可创建隐藏 root Session；服务晚到可重试', async () => {
+  const { createRootSessionCarrier, createGroupChatRuntime } = await import('../lib/groupchat.js')
+  // 工厂先不可用（undefined），第二次可用——ensure 不缓存失败
+  let store
+  const carrier = createRootSessionCarrier({ createSession: async () => store?.create()?.id })
+  assert.equal(await carrier.ensure(), undefined)
+  store = { create: () => ({ id: 'root-created' }) }
+  assert.equal(await carrier.ensure(), 'root-created')
+  assert.equal(await carrier.ensure(), 'root-created')
+
+  const fakeCtx = (await import('./fake-ctx.mjs')).fakeContext()
+  const mod = await import('../lib/identity.js')
+  const groupStore = await mod.createIdentityStore(fakeCtx)
+  const groups = createGroupChatRuntime(fakeCtx, { store: groupStore, ensureSession: carrier })
+  assert.equal(groups.sessionReady(), false, '服务晚到时装配即试失败')
+  assert.equal(await groups.ensureReady(), true, '晚到的创建路径可 await 重试')
+  assert.equal(groups.sessionReady(), true)
+  const g = await groups.createGroup({ name: '晚到群', memberIds: ['bot-a'] })
+  assert.ok(g.id)
 })
 
 // ---- 修复轮 A6：审批真超时 ----

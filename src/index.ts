@@ -290,11 +290,18 @@ function attachRuntimes(
     if (judge === undefined) {
       ctx.logger?.warn('dsh-bot: 未配置 typesafe.apiKey/judge 且无 autoDecide 服务，群聊路由走降级（本轮无人响应提示）')
     }
-    // A2：群聊载体——宿主侧真实创建/复用隐藏 root Session（schedules.ts 同款强制 root 手法）
+    // A2：群聊载体——优先复用装配方 rootSessionId；实测#7：否则经 ctx.sessions 动态创建隐藏 root Session
+    const sessionsRef: { store?: { create(): { id?: string } } } = {}
+    ctx.inject(['sessions'], (services) => {
+      sessionsRef.store = services.sessions as { create(): { id?: string } }
+    })
     runtime.groups = createGroupChatRuntime(ctx, {
       store,
       judge,
-      ensureSession: createRootSessionCarrier({ rootSessionId: options.rootSessionId }),
+      ensureSession: createRootSessionCarrier({
+        rootSessionId: options.rootSessionId,
+        createSession: async () => sessionsRef.store?.create()?.id,
+      }),
       // 票 #16：审批三档 + autoDecide 弱读（limited/full 档自动判定，不可用回退 manual 语义）
       approvalTier: options.typesafe?.approval,
       getAutoDecide: () => autoDecideRef.service,

@@ -115,15 +115,31 @@ export interface RootSessionCarrier {
   ensure(): Promise<string | undefined>
 }
 
-export function createRootSessionCarrier(opts: { rootSessionId?: string }): RootSessionCarrier {
+/**
+ * 实测#7：web 装配无人传 rootSessionId——允许装配方给创建路径（ctx.sessions.create），
+ * 失败不缓存（服务晚到可重试），成功即缓存复用。
+ */
+export function createRootSessionCarrier(opts: {
+  rootSessionId?: string
+  createSession?: () => Promise<string | undefined>
+}): RootSessionCarrier {
   let cached: string | undefined
-  let resolved = false
+  let explicitTried = false
   return {
     async ensure() {
-      if (!resolved) {
-        resolved = true
+      if (cached !== undefined) return cached
+      if (!explicitTried) {
+        explicitTried = true
         const id = opts.rootSessionId
         if (typeof id === 'string' && id.trim() !== '') cached = id
+      }
+      if (cached === undefined && opts.createSession !== undefined) {
+        try {
+          const id = await opts.createSession()
+          if (typeof id === 'string' && id.trim() !== '') cached = id
+        } catch {
+          /* 创建失败不缓存，下次 ensure 重试 */
+        }
       }
       return cached
     },
@@ -136,6 +152,8 @@ export interface GroupChatRuntime {
   history(groupId: string): Promise<GroupMessage[]>
   /** A2：隐藏 root Session 载体是否已解析可用（不可用时群聊功能拒绝，不假装在工作） */
   sessionReady(): boolean
+  /** 实测#7：异步重试解析（服务晚到可等待），返回是否就绪 */
+  ensureReady(): Promise<boolean>
   /** 宿主注入投递实现；未注入时投递降级为日志（不丢消息记录） */
   setDeliverer(deliverer: GroupDeliverer): void
   /** 一轮投递：路由 → 投递或降级；返回本轮判定 */
@@ -190,25 +208,24 @@ export function createGroupChatRuntime(
   let kv: Awaited<ReturnType<typeof openKvUnit>>['kv'] | undefined
   let deliverer: GroupDeliverer | undefined
 
-  // A2：隐藏 root Session 载体（运行时创建即解析并缓存，之后复用）
+  // A2：隐藏 root Session 载体（创建路径晚到可重试；成功后缓存复用）
   let carrierSessionId: string | undefined
-  let carrierResolved = false
+  let carrierWarned = false
   async function resolveSession(): Promise<string | undefined> {
-    if (!carrierResolved) {
-      carrierResolved = true
-      try {
-        carrierSessionId = (await opts.ensureSession?.ensure()) ?? opts.sessionId
-      } catch (error) {
-        warn(`群聊载体 Session 解析失败：${String(error)}`)
-        carrierSessionId = undefined
-      }
-      if (carrierSessionId === undefined) {
-        warn('群聊载体 Session 不可用（未配置 rootSessionId 且无创建路径），群聊功能拒绝服务，不假装在工作')
-      }
+    if (carrierSessionId !== undefined) return carrierSessionId
+    try {
+      carrierSessionId = (await opts.ensureSession?.ensure()) ?? opts.sessionId
+    } catch (error) {
+      warn(`群聊载体 Session 解析失败：${String(error)}`)
+      carrierSessionId = undefined
+    }
+    if (carrierSessionId === undefined && !carrierWarned) {
+      carrierWarned = true
+      warn('群聊载体 Session 暂不可用（等待创建路径或 rootSessionId），就绪前群聊拒绝服务')
     }
     return carrierSessionId
   }
-  // 装配即解析（sessionReady 可同步观察），失败走上面的 warn 降级
+  // 装配即尝试解析（失败可重试，见 ensureReady）
   void resolveSession()
 
   void (async () => {
@@ -333,7 +350,12 @@ export function createGroupChatRuntime(
     },
 
     sessionReady() {
-      return carrierResolved && carrierSessionId !== undefined
+      return carrierSessionId !== undefined
+    },
+
+    /** 实测#7：创建路径晚到时端点入口可 await 重试 */
+    async ensureReady() {
+      return (await resolveSession()) !== undefined
     },
 
     setDeliverer(fn) {
