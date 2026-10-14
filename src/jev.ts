@@ -282,6 +282,10 @@ export function resolveJevBackend(options: JevBackendOptions): JevJudge | undefi
         }
         return outcome.answers as Record<string, { choice?: string; confidence?: number }>
       } catch (error) {
+        if (builtin === undefined) {
+          // 实测#7：autoDecide 判定失败且无 builtin 兜底——干净降级，不报 "builtin is not a function"
+          throw new Error(`autoDecide 判定不可用且未配置 builtin 兜底：${String(error)}`)
+        }
         warn(`dsh-bot: autoDecide 不可用，降级 builtin：${String(error)}`)
       }
     } else if (builtin !== undefined) {
