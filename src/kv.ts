@@ -10,7 +10,8 @@
 import type { HostContext, KvUnit } from './types.js'
 
 const BACKEND_NAME = 'json'
-export const DSH_BOT_UNIT_NAME = 'dsh-bot'
+// 实测#8：宿主 UNIT_NAME_RE=/^[a-z][a-z0-9_]*$/ 不允许连字符，unit 名用下划线。
+export const DSH_BOT_UNIT_NAME = 'dsh_bot'
 export const DSH_BOT_UNIT_VERSION = 1
 
 /**
