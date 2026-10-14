@@ -157,6 +157,79 @@ export async function routeTurn(
   return { responder: choice, confidence: answer.confidence }
 }
 
+// ==================== 票 #16：审批代答自动判定（fail-closed） ====================
+
+export type ApprovalJudgment = 'allow' | 'deny' | 'uncertain' | 'unavailable'
+
+export interface ApprovalJudgmentResult {
+  readonly judgment: ApprovalJudgment
+  /** 判定依据摘要（落审计用） */
+  readonly basis?: string
+  readonly confidence?: number
+  readonly probabilities?: Record<string, number>
+}
+
+/**
+ * 票 #16·审批自动判定：noul 题「是否应拒绝该审批」。
+ * 只弱读 autoDecide 服务（复用票 #14 的弱读 + 保险超时模式）——服务缺失/decode 抛错/
+ * 超时/应答缺失 → judgment='unavailable'，绝不降级 builtin，也绝不抛错。
+ * 判读：choice 'true'=应拒绝→deny；'false'=允许→allow；choice 缺失时看概率，
+ * p(false) 明显占优才 allow，其余一律 uncertain（消费方把 uncertain 当 deny，fail-closed）。
+ */
+export async function judgeApprovalDenial(
+  getAutoDecide: (() => AutoDecideService | undefined) | undefined,
+  input: { toolName: string; summary?: string },
+  options: { timeoutMs?: number } = {},
+): Promise<ApprovalJudgmentResult> {
+  const service = getAutoDecide?.()
+  if (service === undefined) {
+    return { judgment: 'unavailable', basis: 'autoDecide 服务不可用' }
+  }
+  const timeoutMs = options.timeoutMs ?? 15_000
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const outcome = await Promise.race([
+      service.decode({
+        state: { toolName: input.toolName, summary: input.summary ?? '' },
+        questions: {
+          deny: {
+            type: 'noul',
+            instructions:
+              '这是一次工具调用审批请求。根据工具名与摘要判断：是否应当拒绝这次审批？危险、破坏性、超出常规操作范围或摘要可疑的应拒绝。',
+            criteria: { true: '应当拒绝该审批', false: '不应当拒绝（可以允许）' },
+          },
+        },
+      }),
+      new Promise<never>((_, reject) => {
+        controller.signal.addEventListener('abort', () => reject(new Error('autoDecide decode 超时')))
+      }),
+    ])
+    const answer = outcome?.answers?.deny
+    if (answer === undefined || typeof answer !== 'object') {
+      return { judgment: 'unavailable', basis: 'autoDecide 返回缺少 deny 应答' }
+    }
+    const probabilities = answer.probabilities
+    const basis = `noul 判定 choice=${String(answer.choice)}`
+    if (answer.choice === 'true') {
+      return { judgment: 'deny', basis, confidence: answer.confidence, probabilities }
+    }
+    if (answer.choice === 'false') {
+      return { judgment: 'allow', basis, confidence: answer.confidence, probabilities }
+    }
+    const pTrue = typeof probabilities?.['true'] === 'number' ? (probabilities['true'] as number) : 0
+    const pFalse = typeof probabilities?.['false'] === 'number' ? (probabilities['false'] as number) : 0
+    if (pFalse > pTrue && pFalse > 0) {
+      return { judgment: 'allow', basis: `概率判允许 p(false)=${pFalse}`, probabilities }
+    }
+    return { judgment: 'uncertain', basis: 'autoDecide 应答无法解析出明确判定', probabilities }
+  } catch (error) {
+    return { judgment: 'unavailable', basis: `autoDecide 判定失败：${String(error)}` }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export interface JevBackendOptions {
   /** settings 决策后端：默认 'autoDecide'（优先），显式 'builtin' 直连 TypeSafe */
   readonly decision?: DecisionBackendMode
