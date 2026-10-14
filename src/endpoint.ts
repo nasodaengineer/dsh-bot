@@ -17,6 +17,7 @@
  * 服务未就绪 → 逐端点 503 JSON 降级，不抛穿；只挂 POST。
  */
 import type { HostContext } from './types.js'
+import { trace } from './diag.js'
 import type { BotRoster } from './roster.js'
 import type { GroupChatRuntime } from './groupchat.js'
 import type { TaskBoard } from './taskboard.js'
@@ -63,10 +64,12 @@ export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): Ht
   ctx.inject(['connection'], (services) => {
     const connection = (services as { connection?: { fetch: { register(route: FetchRoute): () => void } } }).connection
     if (connection === undefined) {
+      trace('endpoint: inject(connection) 触发但服务缺失')
       ctx.logger?.warn(`dsh-bot: ctx.connection 服务缺失，${ENDPOINT_PATH} 端点不注册`)
       return
     }
     disposeRoute = connection.fetch.register(buildRoute())
+    trace('endpoint: /api/dsh-bot 路由注册成功')
   })
 
   async function dispatch(endpoint: string, payload: Record<string, unknown> | undefined): Promise<{ status: number; body: unknown } | undefined> {
@@ -181,6 +184,7 @@ export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): Ht
     methods: ['POST'],
     requestBody: 'buffered',
     async fetch(request) {
+      trace(`endpoint.fetch: 收到请求 ${request.method} ${request.url}`)
       let raw: unknown
       try {
         raw = JSON.parse(await request.text())
