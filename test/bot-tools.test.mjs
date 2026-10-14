@@ -7,7 +7,7 @@ import { assertMcpServerName, createMcpBridge, isValidMcpServerName, mcpToolName
 
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
-test('bot_* 工具注册：十五个工具名、可注销', async () => {  const ctx = fakeContext()
+test('bot_* 工具注册：十七个工具名、可注销', async () => {  const ctx = fakeContext()
   const runtime = apply(ctx, { rootSessionId: 'root-1' })
   await flush()
   assert.ok(runtime.botTools, 'botTools 应已挂载')
@@ -18,7 +18,9 @@ test('bot_* 工具注册：十五个工具名、可注销', async () => {  const
     'bot_memory_read',
     'bot_memory_search',
     'bot_memory_write',
+    'bot_roster_create',
     'bot_roster_list',
+    'bot_roster_remove',
     'bot_schedule_create',
     'bot_schedule_delete',
     'bot_schedule_list',
@@ -30,14 +32,14 @@ test('bot_* 工具注册：十五个工具名、可注销', async () => {  const
   ])
   runtime.botTools.dispose()
   assert.deepEqual([...runtime.botTools.names], [])
-  assert.ok(ctx.calls.filter((c) => c.startsWith('tool dispose ')).length === 15)
+  assert.ok(ctx.calls.filter((c) => c.startsWith('tool dispose ')).length === 17)
 })
 
 test('实测回归：宿主强制 output 字段——每个注册定义都带 output.schema+render（dsh-tools index.d.ts:115）', async () => {
   const ctx = fakeContext()
   const runtime = apply(ctx, { rootSessionId: 'root-1' })
   await flush()
-  assert.ok(ctx.registeredTools.size === 15, `应注册 15 个工具，实际 ${ctx.registeredTools.size}`)
+  assert.ok(ctx.registeredTools.size === 17, `应注册 17 个工具，实际 ${ctx.registeredTools.size}`)
   for (const [name, tool] of ctx.registeredTools) {
     assert.ok(tool.output, `${name} 缺 output`)
     assert.ok(tool.output.schema !== undefined, `${name} output.schema 缺失`)
@@ -128,4 +130,34 @@ test('MCP 切片：server 名文法与公开工具名规则；connect 未接线�
   const bridge = createMcpBridge([{ name: 'github', transport: 'http', url: 'https://example.test' }])
   assert.equal(bridge.configured.length, 1)
   assert.equal(await bridge.connect('github'), false, 'P2 才接线')
+})
+
+// ---- 实测#3：缺「创建/移除 Bot」工具面 ----
+
+test('实测#3·bot_roster_create：创建进名册（id 自动生成、缺 name 折叠为 error）', async () => {
+  const ctx = fakeContext()
+  const runtime = apply(ctx, { rootSessionId: 'root-1' })
+  await flush()
+  const tool = ctx.registeredTools.get('bot_roster_create')
+  const created = await tool.execute({ name: '实测小助手', title: '测试', description: '一句话人格' })
+  assert.equal(created.ok, true)
+  assert.ok(created.bot.id.startsWith('bot-'))
+  const list = await ctx.registeredTools.get('bot_roster_list').execute({})
+  assert.equal(list.bots.length, 1)
+  assert.equal(list.bots[0].name, '实测小助手')
+  const noName = await tool.execute({})
+  assert.ok(noName.error.includes('name 必填'))
+})
+
+test('实测#3·bot_roster_remove：按 id 移除，名册为空', async () => {
+  const ctx = fakeContext()
+  const runtime = apply(ctx, { rootSessionId: 'root-1' })
+  await flush()
+  const created = await ctx.registeredTools.get('bot_roster_create').execute({ name: '临时' })
+  const removed = await ctx.registeredTools.get('bot_roster_remove').execute({ id: created.bot.id })
+  assert.deepEqual(removed, { ok: true, id: created.bot.id })
+  const list = await ctx.registeredTools.get('bot_roster_list').execute({})
+  assert.deepEqual(list.bots, [])
+  const bad = await ctx.registeredTools.get('bot_roster_remove').execute({})
+  assert.ok(bad.error.includes('id 必填'))
 })
