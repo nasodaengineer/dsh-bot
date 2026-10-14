@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "context": {
+    "summary": "票#10-12 P3：Bot 记忆（KV 自有表 + bot_memory_* 工具）、模板分发（人格+记忆+技能导出/导入 KV templates 表）、HTTP 端点（connection.fetch.register /api/dsh-bot/*，群聊投递/任务板查询/Bot 列表只读三路由，接线群聊投递）。工作区 dsh-bot-wt-p3，分支 p3/memory-template-endpoint。",
+    "next": "TDD 依序：memory → template → endpoint；每票一提交；最后 merge origin/implement/p0、推送分支"
+  },
+  "title": "dsh-bot P3 · 记忆 + 模板 + HTTP 端点（票#10-12）",
+  "kind": "dev",
+  "layers": [
+    {
+      "id": "foundation",
+      "name": "既有 P0-P2 基座（KV/roster/tools/群聊）",
+      "rank": 0
+    },
+    {
+      "id": "p3-domain",
+      "name": "P3 新模块",
+      "rank": 10
+    }
+  ],
+  "nodes": [
+    {
+      "id": "memory-store",
+      "label": "记忆仓库（KV：memory 索引/条目/journal/snapshots）",
+      "layer": "p3-domain",
+      "status": "done",
+      "evidence": "test/memory.test.mjs 9 个用例 + bot-tools 注册用例，72/72 绿，tsc 干净，提交 feat(p3) 票#10",
+      "detail": "MEMORY.md 索引 + 主题条目 + journal + snapshots（KV unit 'dsh-bot' 三表）；单条 8KiB 上限 + 每 Bot 500 条；bot_memory_write/read/search/list/forget/journal 六件工具（按选中 Bot 隔离）；snapshot 留摘要压缩接缝。已提交。"
+    },
+    {
+      "id": "template-store",
+      "label": "模板分发（KV templates 表 + bot_template_export/import）",
+      "layer": "p3-domain",
+      "status": "done",
+      "evidence": "提交 p3 分支：80/80 测试绿 + tsc 干净",
+      "detail": "导出：人格+记忆（可带可不带）+技能清单；导入：派生新 Bot；非标准插件不打包"
+    },
+    {
+      "id": "http-endpoint",
+      "label": "HTTP 端点（/api/dsh-bot/* 三路由）",
+      "layer": "p3-domain",
+      "status": "done",
+      "evidence": "提交 b77fc5d：88/88 测试绿 + tsc 干净，POST /api/dsh-bot 五路由 + 客户端 loader 接线",
+      "detail": "connection.fetch.register，cookie 认证沿用宿主；POST /api/dsh-bot/group/message、GET /tasks、GET /bots；接线 createGroupLoader"
+    }
+  ],
+  "edges": []
+}

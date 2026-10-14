@@ -1,0 +1,7 @@
+{
+  "id": "bot_session",
+  "label": "Bot 会话",
+  "gloss": "一个 Bot 在 DSH 上对应的会话对象；口径是它是否为一个 root Session，以及它的状态如何跨重启存活",
+  "kind": "category",
+  "basis": "ds-bot/index.js 头注释与 src/host/roster.js"
+}

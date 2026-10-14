@@ -1,0 +1,7 @@
+{
+  "id": "ds_bot",
+  "label": "DS Bot",
+  "gloss": "DeepSeek Harness 上的 Bot 团队插件（Fei2411/DeepSeek-Bot）：每个 Bot 是一个 DSH root Session，另有 Main Bot、Bot 间消息与群聊",
+  "kind": "category",
+  "basis": ".refs/DeepSeek-Bot/README.md 与 ds-bot/index.js"
+}

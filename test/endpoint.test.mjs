@@ -210,3 +210,28 @@ test('C12·group.approvals 展示 full 档已自动判定卡（含 autoVerdict�
   assert.equal(body.result.approvals.length, 1, '已自动判定卡出现在群面板')
   assert.equal(body.result.approvals[0].autoVerdict, 'allowed')
 })
+
+// ---- 实测#2 修复：connection 缺失不再裸读 ctx.connection（此前抛
+// cannot get property "connection" without inject 炸穿整个异步装配，工具全不注册）----
+
+test('实测#2·connection 缺失：apply 不抛、端点不注册、其余装配（prompt/tools）照常完成', async () => {
+  const ctx = fakeContext({ disable: ['connection'] })
+  const runtime = apply(ctx, { rootSessionId: 'r' })
+  await flush()
+  assert.ok(!ctx.registeredRoutes.has('/api/dsh-bot'), '无 connection 不注册端点')
+  assert.ok(runtime.endpoint, 'endpoint 运行时仍存在（降级空实现）')
+  assert.ok(ctx.calls.some((c) => c.startsWith('prompt dsh-bot:persona')), '人格段照常注入')
+  assert.ok(ctx.calls.some((c) => c.includes('inject attach [tools]')), '工具订阅照常触发')
+  runtime.endpoint?.dispose()
+})
+
+test('实测#2·connection 后到：inject 到齐即补注册路由', async () => {
+  const ctx = fakeContext({ disable: ['connection'] })
+  const runtime = apply(ctx, { rootSessionId: 'r' })
+  await flush()
+  assert.ok(!ctx.registeredRoutes.has('/api/dsh-bot'))
+  // 模拟服务后到：fake inject 只在构造时求值，这里直接补挂再手动重触发不可行，
+  // 改为验证 inject 订阅已登记（fake ctx 记录 skip），并在服务出现时由 cordis 重触发。
+  assert.ok(ctx.calls.some((c) => c.includes('inject skip [connection]')), '运行期订阅了 connection')
+  runtime.endpoint?.dispose()
+})

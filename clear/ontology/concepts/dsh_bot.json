@@ -1,0 +1,7 @@
+{
+  "id": "dsh_bot",
+  "label": "dsh-bot",
+  "gloss": "本次要做的、功能上对标 Grok Bot 的 DSH 插件",
+  "kind": "category",
+  "basis": "用户的委托"
+}

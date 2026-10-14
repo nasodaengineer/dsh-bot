@@ -1,0 +1,231 @@
+{
+  "version": 2,
+  "context": {
+    "summary": "把 DS Bot 参考实现拆到模块级，产出中文架构报告 research/ds-bot-architecture.md（1344 行）。",
+    "next": "剩余：testing（测试与工程实践）与 teams-compare（与 DSH 原生 Agent Teams 对比）两块未做，报告第 5 节已列为疑点。"
+  },
+  "title": "DS Bot 参考实现架构拆解",
+  "kind": "dataflow",
+  "layers": [
+    {
+      "id": "evidence",
+      "name": "证据源",
+      "rank": 0
+    },
+    {
+      "id": "recon",
+      "name": "模块盘点",
+      "rank": 1
+    },
+    {
+      "id": "analysis",
+      "name": "机制分析",
+      "rank": 2
+    },
+    {
+      "id": "deliverable",
+      "name": "交付物",
+      "rank": 3
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ref-host-src",
+      "label": "DS Bot 宿主源码",
+      "layer": "evidence",
+      "status": "done",
+      "evidence": "src/host/ 下 31 个文件全部读过（entry 四文件 + 组 A–E），字节数与 Get-ChildItem 实测一致",
+      "detail": "src/host/ 共 31 个文件（任务书说 26，实际 31），合计约 480KB。最大：memory.js 79KB、parts.js 55KB、groups.js 39KB。",
+      "kind": "source"
+    },
+    {
+      "id": "ref-client-src",
+      "label": "DS Bot 客户端源码",
+      "layer": "evidence",
+      "status": "done",
+      "evidence": "src/client/ 55 个文件列名与字节数 + 抽读头注释归纳为 6 类，落 research/notes-client.md",
+      "detail": "src/client/ 共 55 个文件（任务书说约 45），另有 styles.js 107KB 与 i18n.js 45KB。入口 index.js 52KB。",
+      "kind": "source"
+    },
+    {
+      "id": "ref-manifest",
+      "label": "装配清单",
+      "layer": "evidence",
+      "status": "done",
+      "evidence": "index.js / package.json / cordis.patch.yml 全文读完，落附录 A 六小节",
+      "detail": "cordis.patch.yml 645B、index.js 3KB、package.json 1.7KB、client.js 812KB（构建产物）。决定插件如何被 DSH 加载。",
+      "kind": "source"
+    },
+    {
+      "id": "ref-tests",
+      "label": "测试与 dev 工具",
+      "layer": "evidence",
+      "status": "done",
+      "evidence": "test/ 59 文件（57 *.test.js + fake-ctx.js + harness-resolve.mjs）+ fixtures 7 个；dev/ 顶层 15 + desktop-linux 15；逐个 Test-Path 核对",
+      "detail": "test/ 59 个测试文件 + dev/ 工具（mock-llm.mjs 49KB、smoke.mjs 18KB、ui-shots.mjs 19KB、memory-e2e.mjs 13KB 等）。",
+      "kind": "source"
+    },
+    {
+      "id": "dsh-packages",
+      "label": "DSH 原生包与 Agent Teams",
+      "layer": "evidence",
+      "status": "done",
+      "evidence": "宿主只静态 import dsh-tools/dsh-llm/dsh-web 三个包；客户端 require 集合被 test/client-bundle.test.js:26-33 钉死为 react/react-dom/dsh-client-ui-primitives；@deepseek-ai/cordis 全仓库零 import",
+      "detail": "从 package.json 与 import 语句提取 @deepseek-ai/* 依赖；并对照 DSH 本体已有的 experimental-agent-team 四件套。",
+      "kind": "source"
+    },
+    {
+      "id": "host-inventory",
+      "label": "宿主模块清单",
+      "layer": "recon",
+      "status": "done",
+      "evidence": "报告第 1 节表格 31 行数据行，覆盖 src/host/ 全部文件",
+      "detail": "逐个列文件名、字节数、职责一句话，重点机制说清 memory/parts/groups/tools 等大件。",
+      "kind": "transform"
+    },
+    {
+      "id": "client-inventory",
+      "label": "客户端模块清单",
+      "layer": "recon",
+      "status": "done",
+      "evidence": "报告第 2 节 6 类，10+7+4+8+13+13=55 与文件总数一致",
+      "detail": "逐个列文件名、字节数、职责一句话，重点 index/usage-page/sidebar/cells/browser-pane 等大件。",
+      "kind": "transform"
+    },
+    {
+      "id": "assembly",
+      "label": "装配与加载路径",
+      "layer": "recon",
+      "status": "done",
+      "evidence": "附录 A：inject 清单、MODULES 顺序与 import 顺序的差异、createRuntime、cordis.patch.yml 两条目",
+      "detail": "读 cordis.patch.yml / index.js / package.json，说清扩展点注册与客户端 bundle 进 Web UI 的方式。",
+      "kind": "transform"
+    },
+    {
+      "id": "mechanisms",
+      "label": "关键机制深挖",
+      "layer": "analysis",
+      "status": "done",
+      "evidence": "报告第 3 节五个机制，行号引用 9/11/9/5/14 处，各附代码原文",
+      "detail": "挑 4-6 个机制，每个写清问题→解法→用到的 DSH API。候选：Bot/Session 对应、Bot 间消息、群聊路由回合制、记忆系统、权限审批、浏览器能力。",
+      "kind": "transform"
+    },
+    {
+      "id": "teams-compare",
+      "label": "与 Agent Teams 的对比",
+      "layer": "analysis",
+      "status": "done",
+      "evidence": "四件套位于 DSH 安装目录 node_modules/@deepseek-ai/，组合包默认关闭 opt-in；对 ds-bot/ 全量 grep agentTeams|agent-team|teammate 排除 client.js 后仅 4 处无关命中（at-menu.js:56、usage.js:323-329）",
+      "detail": "判断 DS Bot 是复用、绕开还是重造 DSH 原生 Agent Teams，给出源码证据。",
+      "kind": "transform"
+    },
+    {
+      "id": "testing",
+      "label": "测试与工程实践",
+      "layer": "analysis",
+      "status": "done",
+      "evidence": "57 个测试中仅 2 个起真进程（mock-llm.test.js spawn、web-search.test.js http server）；install.test.js 断言注册顺序；client-bundle.test.js 字节级比对产物；smoke.mjs 29 个 step、ui-shots.mjs 27 个 shot",
+      "detail": "说清测试策略（mock LLM / e2e 冒烟）与 dev/ 工具用途。",
+      "kind": "transform"
+    },
+    {
+      "id": "doc",
+      "label": "research/ds-bot-architecture.md",
+      "layer": "deliverable",
+      "status": "done",
+      "evidence": "research/ds-bot-architecture.md 1344 行 / 86,901 B，五条判据逐条核对通过",
+      "detail": "最终交付：≥300 行中文 Markdown，覆盖任务书 8 项要求，每条结论附源码路径。",
+      "kind": "sink"
+    },
+    {
+      "id": "notes-678",
+      "label": "第 6/7/8 节素材文件",
+      "layer": "deliverable",
+      "status": "done",
+      "evidence": "文件已写入并核对：63 条引用路径全部 Test-Path 通过；行数/字节数/数字声明（31/55/59/29/27）逐项实测",
+      "detail": "research/notes-packages-and-testing.md（367 行 / 33,449 B）：DSH 原生包依赖面、与 Agent Teams 四件套的逐项对照、测试与工程实践。主文件 ds-bot-architecture.md 对这三节内容 grep 命中数全为 0，本文件是唯一素材。"
+    }
+  ],
+  "edges": [
+    {
+      "from": "host-inventory",
+      "to": "ref-host-src",
+      "label": "逐个读源码"
+    },
+    {
+      "from": "client-inventory",
+      "to": "ref-client-src",
+      "label": "逐个读源码"
+    },
+    {
+      "from": "assembly",
+      "to": "ref-manifest",
+      "label": "读装配文件"
+    },
+    {
+      "from": "testing",
+      "to": "ref-tests",
+      "label": "读测试与 dev"
+    },
+    {
+      "from": "mechanisms",
+      "to": "host-inventory",
+      "label": "在大件上深挖"
+    },
+    {
+      "from": "mechanisms",
+      "to": "client-inventory",
+      "label": "在客户端大件上深挖"
+    },
+    {
+      "from": "teams-compare",
+      "to": "dsh-packages",
+      "label": "对照原生包"
+    },
+    {
+      "from": "teams-compare",
+      "to": "host-inventory",
+      "label": "对照宿主实现"
+    },
+    {
+      "from": "doc",
+      "to": "mechanisms",
+      "label": "写入第 5 节"
+    },
+    {
+      "from": "doc",
+      "to": "teams-compare",
+      "label": "写入第 7 节"
+    },
+    {
+      "from": "doc",
+      "to": "testing",
+      "label": "写入第 8 节"
+    },
+    {
+      "from": "doc",
+      "to": "assembly",
+      "label": "写入第 4 节"
+    },
+    {
+      "from": "notes-678",
+      "to": "teams-compare",
+      "label": "素材"
+    },
+    {
+      "from": "notes-678",
+      "to": "testing",
+      "label": "素材"
+    },
+    {
+      "from": "notes-678",
+      "to": "dsh-packages",
+      "label": "素材"
+    },
+    {
+      "from": "notes-678",
+      "to": "ref-tests",
+      "label": "素材"
+    }
+  ]
+}

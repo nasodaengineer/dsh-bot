@@ -1,0 +1,7 @@
+{
+  "id": "dsh_plugin_boundary",
+  "label": "DSH 插件边界",
+  "gloss": "DSH 插件契约允许做什么、不允许做什么的集合；判定依据是官方插件文档与运行时实际暴露的服务与扩展点，不是记忆",
+  "kind": "category",
+  "basis": "dsh-plugin-guide 的 quick-reference 与 references/official-docs"
+}

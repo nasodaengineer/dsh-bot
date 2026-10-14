@@ -1,0 +1,7 @@
+{
+  "id": "cloud_computer",
+  "label": "Bot 的云计算机",
+  "gloss": "Grok Bot 给每个 Bot 配的独立远程桌面（含桌面、文件系统、终端与应用）；口径是「是否存在多租户的持久远程桌面」——多个 Bot 共享一台机器，但各有自己的屏幕与会话",
+  "kind": "phenomenon",
+  "basis": "x.ai/bot 与 Grok Bot 101 指南"
+}

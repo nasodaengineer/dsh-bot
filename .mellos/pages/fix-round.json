@@ -1,0 +1,130 @@
+{
+  "version": 2,
+  "context": {
+    "summary": "code-review 修复轮：A 必修（async 拒绝逃逸、隐藏 root Session 载体、bot_schedule_pause/resume、from 校验）+ B 顺手收（openKvUnit、审批超时、persona 回退、isGranted、死代码、KV 表清单统一）+ C 接缝（模板完整例程、群面板接线、journal 裁剪）。工作区 dsh-bot-wt-fix，分支 fix/review-round。",
+    "next": "TDD：kv.ts helper → groupchat Session 载体/审批超时 → bot-tools pause/resume → endpoint from 校验+新路由 → template 完整例程 → journal 裁剪 → persona → client 面板 → build+test → merge 提交推送"
+  },
+  "title": "dsh-bot 修复轮 · code-review 双轴报告全量清单",
+  "kind": "dev",
+  "layers": [
+    {
+      "id": "foundation",
+      "name": "共享基座",
+      "rank": 0
+    },
+    {
+      "id": "runtime",
+      "name": "宿主运行时修复",
+      "rank": 1
+    },
+    {
+      "id": "surface",
+      "name": "工具与端点",
+      "rank": 2
+    },
+    {
+      "id": "client",
+      "name": "客户端与收尾",
+      "rank": 3
+    }
+  ],
+  "nodes": [
+    {
+      "id": "kv-helper",
+      "label": "kv.ts：openKvUnit + 统一表清单",
+      "layer": "foundation",
+      "status": "done",
+      "evidence": "test/kv.test.mjs 3 例绿：统一 descriptor、降级 undefined、表清单集中",
+      "detail": "四处重复的「kv.open→失败降级进程内」提取为共享 helper；DSH_BOT_TABLES 集中声明全部表，各模块 open 同一清单"
+    },
+    {
+      "id": "index-async",
+      "label": "index.ts：async 拒绝逃逸 + 清理",
+      "layer": "runtime",
+      "status": "done",
+      "evidence": "groupchat.test A2 三例绿；.catch 后无未处理拒绝",
+      "detail": "item1/9：IIFE 加 catch；删 void cwd 死表达式；attachP1Runtimes→attachRuntimes"
+    },
+    {
+      "id": "group-session",
+      "label": "groupchat：隐藏 root Session 载体",
+      "layer": "runtime",
+      "status": "done",
+      "evidence": "test/groupchat.test.mjs：sessionReady 真/假例 + createGroup fail-visible rejects",
+      "detail": "item2：宿主侧真实创建/复用隐藏 root Session；无法创建 warn 降级且群聊标记不可用"
+    },
+    {
+      "id": "approval-timeout",
+      "label": "groupchat：审批 Waiter 真超时",
+      "layer": "runtime",
+      "status": "done",
+      "evidence": "test/groupchat.test.mjs A6 超时例：timeoutMs=30 → granted=false outcome=unavailable 卡已清",
+      "detail": "item6：setTimeout 可配超时默认 10 分钟，超时 fail-closed granted=false"
+    },
+    {
+      "id": "isgranted-persona",
+      "label": "isGranted 复用 + persona 不静默回退",
+      "layer": "runtime",
+      "status": "done",
+      "evidence": "persona.test B7 例（不注入+warn 一次）；groupchat.test settle 走 isGranted",
+      "detail": "item8/7：answerApproval 复用 bot-approval.isGranted；persona 未选中不回退名册第一个"
+    },
+    {
+      "id": "schedule-tools",
+      "label": "bot-tools：pause/resume 工具",
+      "layer": "surface",
+      "status": "done",
+      "evidence": "bot-tools.test 15 工具名 + pause/resume 语义例绿",
+      "detail": "item3：schedules.ts 已有语义，注册两工具"
+    },
+    {
+      "id": "endpoint-from",
+      "label": "endpoint：from 白名单校验",
+      "layer": "surface",
+      "status": "done",
+      "evidence": "endpoint.test A4 例：非法 from 400 且不入史",
+      "detail": "item4：group.message payload.from 长度/字符集校验，非法 400 不入群史"
+    },
+    {
+      "id": "panel-routes",
+      "label": "endpoint：群消息/审批卡/批准拒绝路由",
+      "layer": "surface",
+      "status": "done",
+      "evidence": "endpoint.test C12 两例：messages/approvals 读取 + approve/reject 代答 404",
+      "detail": "item12：group.messages / group.approvals 只读 + group.approve/group.reject 动作路由"
+    },
+    {
+      "id": "template-full",
+      "label": "template：完整例程序列化",
+      "layer": "surface",
+      "status": "done",
+      "evidence": "template.test C11 两例：原样重建无 86_400 硬编码；3000 字 prompt 截断到 2000 标记",
+      "detail": "item11：导出保存完整 ScheduleCreateRequest（可截断），导入原样重建，去掉硬编码占位"
+    },
+    {
+      "id": "journal-trim",
+      "label": "memory：journal 条数裁剪",
+      "layer": "surface",
+      "status": "done",
+      "evidence": "memory.test C13 例：1200 条裁到 1000，最旧 bot-a 被裁",
+      "detail": "item13：memory_journal 按条数上限 1000 裁最旧；摘要压缩留接缝"
+    },
+    {
+      "id": "client-panel",
+      "label": "client：GroupPanel 消息/审批卡接线",
+      "layer": "client",
+      "status": "done",
+      "evidence": "src/client/index.ts：loadMessages/loadApprovals/answerApproval + 5s 轮询 + 按钮，双语 DICTS",
+      "detail": "item12 客户端侧：轮询群消息与待批卡，批准/拒绝按钮 POST 宿主代答，zh/en 双语"
+    },
+    {
+      "id": "finalize",
+      "label": "收尾：build/test/merge/push",
+      "layer": "client",
+      "status": "done",
+      "evidence": "typecheck 通过；node --test 102/102 绿；commit a4800e3 已 push origin/fix/review-round",
+      "detail": "构建 + 全量测试绿 + 无回归，merge origin/implement/p0，推送分支"
+    }
+  ],
+  "edges": []
+}

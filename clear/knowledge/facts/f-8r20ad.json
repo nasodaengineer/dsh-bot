@@ -1,0 +1,120 @@
+{
+  "id": "f-8r20ad",
+  "goal": "g-mv6lr50auw29",
+  "hypothesis": "h-ggdkyu",
+  "text": "DS Bot 在 DSH 上把 Bot 团队做出来，靠的是「每个 Bot 一个 root Session」+ 宿主侧自有状态文件，而不是新增会话事件类型",
+  "about": [
+    "ds_bot",
+    "bot_session",
+    "implements_as",
+    "grok_bot",
+    "dsh_bot",
+    "dsh_plugin_boundary",
+    "cloud_computer"
+  ],
+  "scope": null,
+  "scope_spec": null,
+  "refute_when": "源码里出现插件自定义的 SessionEventMap 新事件类型，或 Bot 不是 root Session",
+  "level": "L3",
+  "evidence": [
+    "e-4x7r6a",
+    "e-5tu93f"
+  ],
+  "evidence_records": [
+    {
+      "id": "e-4x7r6a",
+      "step": "s2",
+      "plan": "p-mv6lux3kgn1j",
+      "hypothesis": "h-ggdkyu",
+      "verdict": "support",
+      "level": "L2",
+      "evaluator": "self",
+      "basis": "推翻条件是「存在插件自定义 Session 事件类型，或 Bot 状态落在 DSH 会话存储里」。三处证据均未触及：index.js:1-3 明文声明 without new Session event types；全仓库 grep 无插件自定义事件类型，跨 Bot 消息走普通 user message + 自定义 source；团队状态实际落在 DSH_HOME/bot/state.json 单文件。没有一条读数落在推翻条件上。",
+      "refs": [
+        "research/ds-bot-architecture.md",
+        "research/notes-packages-and-testing.md",
+        "research/notes-client.md",
+        "research/notes-mechanisms.md"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "research/ds-bot-architecture.md"
+        },
+        {
+          "kind": "artifact",
+          "path": "research/notes-packages-and-testing.md"
+        },
+        {
+          "kind": "artifact",
+          "path": "research/notes-client.md"
+        },
+        {
+          "kind": "artifact",
+          "path": "research/notes-mechanisms.md"
+        }
+      ],
+      "anchor": "artifact",
+      "basis_reviewable": true,
+      "at": 1791894042722
+    },
+    {
+      "t": "evidence/recorded",
+      "id": "e-5tu93f",
+      "step": "goal:g-mv6lr50auw29",
+      "plan": "goal",
+      "hypothesis": "h-ggdkyu",
+      "verdict": "support",
+      "level": "L3",
+      "evaluator": "independent",
+      "basis": "index.js:1-3 原文自述 Bot=root Session、状态在 DSH_HOME 单一 JSON、without new Session event types；全 src 目录 grep SessionEvent 零命中、agentTeams 零命中，推翻条件均未出现",
+      "refs": [],
+      "origins": [
+        {
+          "kind": "audit-card",
+          "path": "clear\\evidence\\audits\\9fc0e6548a392922dc7c32540ffc0b9c4304ed376d5ab327d59395ec7367038c\\26c24d76f6873665ef93ccc39ed0ea6e2ed9d97ea7566f0102aafd7efbd2894d.json"
+        },
+        {
+          "kind": "evaluator-session",
+          "session": "c6069aba-d6bf-4f6e-86a1-32620a3b1ec3"
+        }
+      ],
+      "anchor": "auditor",
+      "basis_reviewable": true
+    }
+  ],
+  "assertions": [
+    {
+      "object": {
+        "kind": "statement",
+        "type": "mechanism",
+        "value": "每个 Bot 一个 root Session，团队状态（roster、rooms、交换日志）存 DSH_HOME 下的自有 JSON 文件，不新增会话事件类型"
+      },
+      "predicate": "implements_as",
+      "subject": {
+        "id": "ds_bot",
+        "type": "ds_bot"
+      }
+    }
+  ],
+  "definitions": {
+    "implements_as": "fnv:67afc998",
+    "ds_bot": "fnv:165dfc79",
+    "bot_session": "fnv:b0e3659d",
+    "cloud_computer": "fnv:c24c47b9",
+    "dsh_bot": "fnv:8147d13f",
+    "dsh_plugin_boundary": "fnv:4748de5d",
+    "grok_bot": "fnv:a6542446"
+  },
+  "session": "session-7d85d684-3cfc-45c1-89c6-88224b62390f",
+  "status": "established",
+  "review": null,
+  "at": 1791905878940,
+  "history": [
+    {
+      "event": "promoted",
+      "at": 1791905878940,
+      "level": "L3"
+    }
+  ]
+}

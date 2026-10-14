@@ -1,0 +1,10 @@
+{
+  "id": "dsh_plugin_boundary",
+  "label": "DSH 插件边界",
+  "type": "dsh_plugin_boundary",
+  "basis": "DSH 官方插件文档",
+  "provenance": {
+    "kind": "backref",
+    "ref": ".reference/dsh-plugin-guide/references/official-docs"
+  }
+}

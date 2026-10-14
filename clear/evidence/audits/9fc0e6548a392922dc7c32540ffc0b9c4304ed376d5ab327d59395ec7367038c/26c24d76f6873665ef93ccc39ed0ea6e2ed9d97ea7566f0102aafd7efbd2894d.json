@@ -1,0 +1,107 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv6lr50auw29",
+  "auditor_run_id": "c6069aba-d6bf-4f6e-86a1-32620a3b1ec3",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "yes",
+  "results": [
+    {
+      "hypothesis": "h-ggdkyu",
+      "verdict": "support",
+      "basis": "index.js:1-3 原文自述 Bot=root Session、状态在 DSH_HOME 单一 JSON、without new Session event types；全 src 目录 grep SessionEvent 零命中、agentTeams 零命中，推翻条件均未出现"
+    },
+    {
+      "hypothesis": "h-djhfqz",
+      "verdict": "support",
+      "basis": "137 条 augmentation 扫描的 129 个去重服务名中 vm/container/remoteDesktop/screen/machine 均无命中；ctx.computerUse 公开接口仅 get providerName/register 两个成员（boundaries 686-693 行），未找到多租户远程桌面等价能力或官方替代扩展点"
+    },
+    {
+      "hypothesis": "h-wwlpyr",
+      "verdict": "support",
+      "basis": "15 个域各带条目数与 S 编号出处（全部指向 x.ai 官方 URL，S12 docs.x.ai 抓取失败已如实披露），域间未见互相矛盾，≥8 域门槛达标"
+    }
+  ],
+  "anomalies": [],
+  "lessons": [],
+  "basis": "交付成立：三份产物+功能清单全部存在、结构合法，关键数字在副本中独立复跑吻合——Grok Bot 15 个能力域（##1–15）条目数声明合计 173 抽验吻合、每域带 S 编号→x.ai 出处；DS Bot 宿主 31 个 src/host 文件 9,904 行、客户端 55 文件 12,742 行、测试 59 文件均实测一致；边界表 23/12/8 逐行清点吻合；299 包、137 条 augmentation、129 个去重服务名实测复现；index.js:1-3 原文确认「每个 Bot 一个 root Session + 单一 JSON 状态 + 不新增 Session 事件类型」。两条小转写瑕疵（见 shortfalls）不动摇判据。",
+  "shortfalls": [
+    {
+      "criterion": "q2 转写：「宿主 31 个模块经单一 rt 总线装配」",
+      "what": "31 是 src/host 文件数（复跑=31），但 index.js:43 的 MODULES 数组实测 27 项（constants/home-lock/steward/text 不在其中），ds-bot-architecture.md:14 称「31 个模块共用 rt」",
+      "missing": "数字应为「31 个源文件、其中 27 个经 MODULES 装配」；不影响判据②"
+    },
+    {
+      "criterion": "q4 转写：「差距总表 20 行」",
+      "what": "dsh-bot-roadmap.md:17-42 差距总表实测 15 个数据行，结论写 20 行",
+      "missing": "应写 15 域（17 行含表头）；分类计数本身正确"
+    },
+    {
+      "criterion": "q1 转写：「每条带官方出处 URL」",
+      "what": "grok-bot-features.md 条目引用的是域级「出处：S3/S10」行，非每条目内嵌 URL；S 清单（13-25 行）为 12 个 x.ai 官方 URL",
+      "missing": "条目级溯源经由域级出处行成立；判据原文要求的是每域带出处，故不构成缺口，仅注明口径"
+    }
+  ],
+  "refs": [
+    {
+      "path": "research/grok-bot-features.md",
+      "line": 31
+    },
+    {
+      "path": "research/grok-bot-features.md",
+      "line": 175
+    },
+    {
+      "path": ".refs/DeepSeek-Bot/ds-bot/index.js",
+      "line": 1
+    },
+    {
+      "path": ".refs/DeepSeek-Bot/ds-bot/index.js",
+      "line": 43
+    },
+    {
+      "path": "research/ds-bot-architecture.md",
+      "line": 14
+    },
+    {
+      "path": "research/ds-bot-architecture.md",
+      "line": 28
+    },
+    {
+      "path": "research/dsh-plugin-boundaries.md",
+      "line": 583
+    },
+    {
+      "path": "research/dsh-plugin-boundaries.md",
+      "line": 613
+    },
+    {
+      "path": "research/dsh-plugin-boundaries.md",
+      "line": 632
+    },
+    {
+      "path": "research/dsh-plugin-boundaries.md",
+      "line": 686
+    },
+    {
+      "path": "research/dsh-bot-roadmap.md",
+      "line": 17
+    },
+    {
+      "path": "research/dsh-bot-roadmap.md",
+      "line": 42
+    },
+    {
+      "path": "research/dsh-bot-roadmap.md",
+      "line": 81
+    },
+    {
+      "path": "research/_services-raw.txt",
+      "line": 5
+    }
+  ],
+  "card": "交付成立：三份产物+功能清单全部存在、结构合法，关键数字在副本中独立复跑吻合——Grok Bot 15 个能力域（##1–15）条目数声明合计 173 抽验吻合、每域带 S 编号→x.ai 出处；DS Bot 宿主 31 个 src/host 文件 9,904 行、客户端 55 文件 12,742 行、测试 59 文件均实测一致；边界表 23/12/8 逐行清点吻合；299 包、137 条 augmentation、129 个去重服务名实测复现；index.js:1-3 原文确认「每个 Bot 一个 root Session + 单一 JSON 状态 + 不新增 Session 事件类型」。两条小转写瑕疵（见 shortfalls）不动摇判据。",
+  "created_at": 1791905878724,
+  "evaluator": "independent"
+}

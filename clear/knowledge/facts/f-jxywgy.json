@@ -1,0 +1,107 @@
+{
+  "id": "f-jxywgy",
+  "goal": "g-mv6lr50auw29",
+  "hypothesis": "h-wwlpyr",
+  "text": "Grok Bot 的功能面可以归到有限的能力域，每个域都有官方文档出处",
+  "about": [
+    "grok_bot",
+    "feature_area",
+    "decomposes_into",
+    "ds_bot",
+    "dsh_bot",
+    "dsh_plugin_boundary",
+    "bot_session",
+    "cloud_computer"
+  ],
+  "scope": null,
+  "scope_spec": null,
+  "refute_when": "官方材料里出现无法归入任何域的能力，或某个域在多个来源中互相矛盾",
+  "level": "L3",
+  "evidence": [
+    "e-5lodd9",
+    "e-6xewce"
+  ],
+  "evidence_records": [
+    {
+      "id": "e-5lodd9",
+      "step": "s1",
+      "plan": "p-mv6lux3kgn1j",
+      "hypothesis": "h-wwlpyr",
+      "verdict": "support",
+      "level": "L2",
+      "evaluator": "self",
+      "basis": "推翻条件是「出现无法归域的能力条目」。§16.2 逐条核对 S1–S11 后为空集：173 条全部落入 15 个域，且每域条目数 7–22 条、无空域。域数 15 远超门槛 8。",
+      "refs": [
+        "research/grok-bot-features.md"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "research/grok-bot-features.md"
+        }
+      ],
+      "anchor": "artifact",
+      "basis_reviewable": true,
+      "at": 1791892346881
+    },
+    {
+      "t": "evidence/recorded",
+      "id": "e-6xewce",
+      "step": "goal:g-mv6lr50auw29",
+      "plan": "goal",
+      "hypothesis": "h-wwlpyr",
+      "verdict": "support",
+      "level": "L3",
+      "evaluator": "independent",
+      "basis": "15 个域各带条目数与 S 编号出处（全部指向 x.ai 官方 URL，S12 docs.x.ai 抓取失败已如实披露），域间未见互相矛盾，≥8 域门槛达标",
+      "refs": [],
+      "origins": [
+        {
+          "kind": "audit-card",
+          "path": "clear\\evidence\\audits\\9fc0e6548a392922dc7c32540ffc0b9c4304ed376d5ab327d59395ec7367038c\\26c24d76f6873665ef93ccc39ed0ea6e2ed9d97ea7566f0102aafd7efbd2894d.json"
+        },
+        {
+          "kind": "evaluator-session",
+          "session": "c6069aba-d6bf-4f6e-86a1-32620a3b1ec3"
+        }
+      ],
+      "anchor": "auditor",
+      "basis_reviewable": true
+    }
+  ],
+  "assertions": [
+    {
+      "object": {
+        "kind": "statement",
+        "type": "feature_area_set",
+        "value": "Bot 本体、团队协作、云计算机与浏览器、例程与触发、记忆、权限与审批、连接器与凭据、团队分发与市场"
+      },
+      "predicate": "decomposes_into",
+      "subject": {
+        "id": "grok_bot",
+        "type": "grok_bot"
+      }
+    }
+  ],
+  "definitions": {
+    "decomposes_into": "fnv:b8192d05",
+    "grok_bot": "fnv:a6542446",
+    "bot_session": "fnv:b0e3659d",
+    "cloud_computer": "fnv:c24c47b9",
+    "ds_bot": "fnv:165dfc79",
+    "dsh_bot": "fnv:8147d13f",
+    "dsh_plugin_boundary": "fnv:4748de5d",
+    "feature_area": "fnv:b4d29f40"
+  },
+  "session": "session-7d85d684-3cfc-45c1-89c6-88224b62390f",
+  "status": "established",
+  "review": null,
+  "at": 1791905878955,
+  "history": [
+    {
+      "event": "promoted",
+      "at": 1791905878955,
+      "level": "L3"
+    }
+  ]
+}

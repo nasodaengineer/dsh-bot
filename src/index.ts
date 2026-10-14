@@ -30,6 +30,7 @@ import { createGroupChatRuntime, createRootSessionCarrier, type GroupChatRuntime
 import { createMemoryRepo, type MemoryRepo } from './memory.js'
 import { createTemplateStore, type TemplateStore } from './template.js'
 import { attachHttpEndpoint, type HttpEndpointRuntime } from './endpoint.js'
+import { trace } from './diag.js'
 
 export const name = 'dsh-bot'
 
@@ -120,9 +121,11 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
 
   // 异步装配：cordis 的 apply 可以返回 Promise；注册动作都在 Promise 内完成。
   void (async () => {
+    trace('apply: async 装配开始')
     const store = await createIdentityStore(ctx)
     const roster = await createRoster(ctx, store)
     runtime.roster = roster
+    trace('apply: identity+roster 完成')
     storeRef = store
     runtime.selectedId = await store.getSelectedId()
     // 票 #10：记忆仓库与身份共用 KV unit 'dsh-bot'（自有表），失败内部降级
@@ -152,7 +155,9 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
 
     // P1 功能面：运行期可选依赖，到齐即挂，掉了重挂。
     attachRuntimes(ctx, runtime, store, options)
+    trace('apply: attachRuntimes 完成（inject 订阅已注册）')
   })().catch((error) => {
+    trace(`apply: 初始化失败 ${String(error)}`)
     ctx.logger?.warn(`dsh-bot: 初始化失败：${String(error)}`)
   })
 
@@ -208,6 +213,7 @@ function attachRuntimes(
   const getSchedules = () => runtime.schedules as BotSchedulesRuntime | undefined
   ctx.inject(['tools'], (services) => {
     const roster = runtime.roster as BotRoster | undefined
+    trace(`inject(tools): 触发 roster=${roster !== undefined ? 'ok' : 'undefined'} toolsSvc=${services.tools !== undefined ? 'ok' : 'undefined'}`)
     if (roster === undefined) return
     runtime.botTools = attachBotTools(ctx, services.tools as ToolsService, {
       roster,

@@ -1,0 +1,10 @@
+{
+  "id": "implements_as",
+  "label": "实现方式为",
+  "gloss": "一个系统用什么样的机制把它做出来",
+  "kind": "defines",
+  "range": {
+    "form": "statement"
+  },
+  "basis": "DS Bot 源码"
+}

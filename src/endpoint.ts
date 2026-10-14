@@ -55,11 +55,19 @@ export function isValidFrom(from: unknown): from is string {
 }
 
 export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): HttpEndpointRuntime {
-  const connection = (ctx as HostContext & { connection?: { fetch: { register(route: FetchRoute): () => void } } }).connection
-  if (connection === undefined) {
-    ctx.logger?.warn(`dsh-bot: ctx.connection 服务缺失，${ENDPOINT_PATH} 端点不注册`)
-    return { path: ENDPOINT_PATH, dispose() {} }
-  }
+  let disposeRoute: (() => void) | undefined
+  // 实测#2 根因修复：此前在异步装配里裸读 ctx.connection——在未提供该服务的
+  // cordis 树上会抛 `cannot get property "connection" without inject`，炸穿整个
+  // 异步装配（人格段、工具注册全部中断）。改走运行期 ctx.inject(['connection'])：
+  // 服务到齐即注册路由，缺失/后到由 cordis 重触发；端点缺席只降级自身，不影响装配。
+  ctx.inject(['connection'], (services) => {
+    const connection = (services as { connection?: { fetch: { register(route: FetchRoute): () => void } } }).connection
+    if (connection === undefined) {
+      ctx.logger?.warn(`dsh-bot: ctx.connection 服务缺失，${ENDPOINT_PATH} 端点不注册`)
+      return
+    }
+    disposeRoute = connection.fetch.register(buildRoute())
+  })
 
   async function dispatch(endpoint: string, payload: Record<string, unknown> | undefined): Promise<{ status: number; body: unknown } | undefined> {
     switch (endpoint) {
@@ -152,7 +160,8 @@ export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): Ht
     }
   }
 
-  const route: FetchRoute = {
+  function buildRoute(): FetchRoute {
+    return {
     path: ENDPOINT_PATH,
     methods: ['POST'],
     requestBody: 'buffered',
@@ -177,7 +186,6 @@ export function attachHttpEndpoint(ctx: HostContext, deps: HttpEndpointDeps): Ht
       }
     },
   }
-
-  const dispose = connection.fetch.register(route)
-  return { path: ENDPOINT_PATH, dispose: () => dispose() }
+  }
+  return { path: ENDPOINT_PATH, dispose: () => { disposeRoute?.(); disposeRoute = undefined } }
 }

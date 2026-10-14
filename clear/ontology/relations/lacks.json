@@ -1,0 +1,10 @@
+{
+  "id": "lacks",
+  "label": "缺少",
+  "gloss": "一个边界内不存在的能力",
+  "kind": "defines",
+  "range": {
+    "form": "statement"
+  },
+  "basis": "DSH 插件文档"
+}

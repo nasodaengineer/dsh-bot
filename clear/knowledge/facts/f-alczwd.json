@@ -1,0 +1,120 @@
+{
+  "id": "f-alczwd",
+  "goal": "g-mv6lr50auw29",
+  "hypothesis": "h-djhfqz",
+  "text": "DSH 插件系统足以支撑 Bot 团队功能，但「Bot 拥有自己的云计算机」这一条在插件边界内无法复刻",
+  "about": [
+    "dsh_plugin_boundary",
+    "cloud_computer",
+    "lacks",
+    "grok_bot",
+    "ds_bot",
+    "dsh_bot",
+    "bot_session"
+  ],
+  "scope": null,
+  "scope_spec": null,
+  "refute_when": "在 DSH 插件 API 中找到等价的多租户远程桌面能力，或找到官方文档化的替代扩展点",
+  "level": "L3",
+  "evidence": [
+    "e-ld2uxk",
+    "e-r1qth4"
+  ],
+  "evidence_records": [
+    {
+      "id": "e-ld2uxk",
+      "step": "s3",
+      "plan": "p-mv6lux3kgn1j",
+      "hypothesis": "h-djhfqz",
+      "verdict": "support",
+      "level": "L2",
+      "evaluator": "self",
+      "basis": "推翻条件是「存在某个 ctx 服务能提供独占、隔离、持久的计算资源」。三条证据链都指向反面：ctx.computerUse 只有 providerName + register(name) 两个成员，是独占名额注册表而非资源分配 API；README 原文明确是「共享桌面」+「不可运行时切换驱动」，与 Grok Bot 的按 Bot 分配 + 可回收方向相反；129 个服务名里无 vm/container/remoteDesktop/screen/machine，dsh-sandbox README 主动划界说明容器与远程执行需替换能力实现而非在此加 provider。没有一条读数落在推翻条件上。",
+      "refs": [
+        "research/dsh-plugin-boundaries.md",
+        "research/dsh-plugin-skeleton.md",
+        "research/.pkglist.txt",
+        "research/_methods-raw.txt"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "research/dsh-plugin-boundaries.md"
+        },
+        {
+          "kind": "artifact",
+          "path": "research/dsh-plugin-skeleton.md"
+        },
+        {
+          "kind": "artifact",
+          "path": "research/.pkglist.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "research/_methods-raw.txt"
+        }
+      ],
+      "anchor": "artifact",
+      "basis_reviewable": true,
+      "at": 1791894054889
+    },
+    {
+      "t": "evidence/recorded",
+      "id": "e-r1qth4",
+      "step": "goal:g-mv6lr50auw29",
+      "plan": "goal",
+      "hypothesis": "h-djhfqz",
+      "verdict": "support",
+      "level": "L3",
+      "evaluator": "independent",
+      "basis": "137 条 augmentation 扫描的 129 个去重服务名中 vm/container/remoteDesktop/screen/machine 均无命中；ctx.computerUse 公开接口仅 get providerName/register 两个成员（boundaries 686-693 行），未找到多租户远程桌面等价能力或官方替代扩展点",
+      "refs": [],
+      "origins": [
+        {
+          "kind": "audit-card",
+          "path": "clear\\evidence\\audits\\9fc0e6548a392922dc7c32540ffc0b9c4304ed376d5ab327d59395ec7367038c\\26c24d76f6873665ef93ccc39ed0ea6e2ed9d97ea7566f0102aafd7efbd2894d.json"
+        },
+        {
+          "kind": "evaluator-session",
+          "session": "c6069aba-d6bf-4f6e-86a1-32620a3b1ec3"
+        }
+      ],
+      "anchor": "auditor",
+      "basis_reviewable": true
+    }
+  ],
+  "assertions": [
+    {
+      "object": {
+        "kind": "statement",
+        "type": "boundary",
+        "value": "DSH 插件边界内没有等价的多租户持久远程桌面；本地桌面控制与会话级沙箱存在，但不是每 Bot 一台持久云计算机"
+      },
+      "predicate": "lacks",
+      "subject": {
+        "id": "dsh_plugin_boundary",
+        "type": "dsh_plugin_boundary"
+      }
+    }
+  ],
+  "definitions": {
+    "lacks": "fnv:64d38560",
+    "dsh_plugin_boundary": "fnv:4748de5d",
+    "bot_session": "fnv:b0e3659d",
+    "cloud_computer": "fnv:c24c47b9",
+    "ds_bot": "fnv:165dfc79",
+    "dsh_bot": "fnv:8147d13f",
+    "grok_bot": "fnv:a6542446"
+  },
+  "session": "session-7d85d684-3cfc-45c1-89c6-88224b62390f",
+  "status": "established",
+  "review": null,
+  "at": 1791905878948,
+  "history": [
+    {
+      "event": "promoted",
+      "at": 1791905878948,
+      "level": "L3"
+    }
+  ]
+}

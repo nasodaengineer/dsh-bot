@@ -1,0 +1,10 @@
+{
+  "id": "ds_bot",
+  "label": "DS Bot",
+  "type": "ds_bot",
+  "basis": "参考仓库",
+  "provenance": {
+    "kind": "backref",
+    "ref": ".refs/DeepSeek-Bot/ds-bot/index.js"
+  }
+}

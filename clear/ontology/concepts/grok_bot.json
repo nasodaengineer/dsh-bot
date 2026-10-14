@@ -1,0 +1,8 @@
+{
+  "id": "grok_bot",
+  "label": "Grok Bot",
+  "gloss": "xAI 的 always-on AI 队友产品：每个 Bot 拥有自己的云计算机，可登录用户的工具与应用并像人一样操作，端到端把活干完；桌面端与 iOS 端共享同一台计算机",
+  "kind": "category",
+  "basis": "x.ai/news/introducing-grok-bot 与 x.ai/bot",
+  "note": "口径：不是 Telegram/Discord 聊天机器人，是带持久云桌面的 agent 产品"
+}

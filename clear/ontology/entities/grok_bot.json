@@ -1,0 +1,10 @@
+{
+  "id": "grok_bot",
+  "label": "Grok Bot",
+  "type": "grok_bot",
+  "basis": "xAI 官方发布材料",
+  "provenance": {
+    "kind": "url",
+    "ref": "https://x.ai/news/introducing-grok-bot"
+  }
+}

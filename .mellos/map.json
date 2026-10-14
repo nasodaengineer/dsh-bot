@@ -1,0 +1,264 @@
+{
+  "version": 2,
+  "context": {
+    "summary": "票#8 P2：ctx.agentTeams 封装（live caller 透传）、任务板 DAG claim 守卫、群聊（隐藏 root Session + Jev 类型化路由 + 审批代答）、客户端 conversation.view 群聊面板 + Bot 详情页 + 双语。工作区 dsh-bot-wt-p2，分支 p2/team。",
+    "next": "TDD：agent-teams → taskboard → jev → groupchat（路由+审批代答）→ 客户端 bundle → 接线 index.ts → 构建测试 → merge 提交推送"
+  },
+  "title": "dsh-bot P2 · 团队协作与客户端界面（票#8）",
+  "kind": "dev",
+  "layers": [
+    {
+      "id": "evidence",
+      "name": "证据源",
+      "rank": 0
+    },
+    {
+      "id": "recon",
+      "name": "侦察产物",
+      "rank": 1
+    },
+    {
+      "id": "design",
+      "name": "差距与设计",
+      "rank": 2
+    },
+    {
+      "id": "plan",
+      "name": "路线图",
+      "rank": 3
+    },
+    {
+      "id": "host-core-p2",
+      "name": "宿主运行时（P0/P1 已有）",
+      "rank": 10
+    },
+    {
+      "id": "team-svc",
+      "name": "团队协作（P2）",
+      "rank": 20
+    },
+    {
+      "id": "group-svc",
+      "name": "群聊（P2）",
+      "rank": 30
+    },
+    {
+      "id": "client-p2",
+      "name": "客户端界面（P2）",
+      "rank": 40
+    }
+  ],
+  "nodes": [
+    {
+      "id": "grok-bot-docs",
+      "label": "Grok Bot 官方材料",
+      "layer": "evidence",
+      "status": "done",
+      "evidence": "本会话已抓取 6 个官方页面原文要点",
+      "detail": "x.ai/news/introducing-grok-bot（Aug 11 2026 launch）、x.ai/bot、/bot/guides、/bot/changelog、docs.x.ai/grok-bot 的 overview 与 get-started。web_search 在本会话不可用（multiple web providers registered），全程用 web_fetch。",
+      "kind": "source",
+      "sources": [
+        {
+          "path": "research/grok-bot-features.md"
+        }
+      ]
+    },
+    {
+      "id": "ds-bot-source",
+      "label": "DS Bot 参考源码",
+      "layer": "evidence",
+      "status": "done",
+      "evidence": "已克隆并清点文件树",
+      "detail": ".refs/DeepSeek-Bot/ds-bot：src/host 26 个模块、src/client 约 45 个模块、src/shared、test 约 50 个测试、web-search.js 42KB、client.js 812KB 生成物、cordis.patch.yml 装配层。",
+      "kind": "source",
+      "sources": [
+        {
+          "path": "research/ds-bot-architecture.md"
+        }
+      ]
+    },
+    {
+      "id": "dsh-runtime",
+      "label": "DSH 运行时与包",
+      "layer": "evidence",
+      "status": "done",
+      "evidence": "已读 dsh 元包 package.json 全量依赖清单",
+      "detail": "E:\\data\\my-work\\dsh\\DSH-X\\data\\versions\\0.2.1-alpha.2\\node_modules\\@deepseek-ai 下 100+ 包，每包带 README.md / README.zh.md / lib/types/*.d.ts，即权威文档来源。DSH-X 根另有 plugins.js / registry.js / settings.js / start.js 等启动器。",
+      "kind": "source",
+      "sources": [
+        {
+          "path": "research/dsh-plugin-boundaries.md"
+        },
+        {
+          "path": "research/dsh-plugin-skeleton.md"
+        }
+      ]
+    },
+    {
+      "id": "feature-surface",
+      "label": "Grok Bot 功能面清单",
+      "layer": "recon",
+      "status": "done",
+      "evidence": "research/grok-bot-features.md 落盘 28735 B；AdvancePlan s1 已交付，「功能面可归纳」判定支持。",
+      "detail": "15 个能力域 / 173 条，每条挂官方 URL。产物 research/grok-bot-features.md（28.7 KB，17 节）。§16.1 计数表 15 域；§16.2 确认无无法归域条目；§16.3 记录 4 处跨源张力（共享计算机 vs 每 Bot 一台、Marketplace 改名时间差、SpaceXSI/SpaceXAI 命名、`/` 菜单两次相反改动）；§16.4 版本时间线 v0.56.0–v0.68.1。已知缺口：docs.x.ai 全程抓取失败。",
+      "kind": "transform"
+    },
+    {
+      "id": "ds-bot-arch",
+      "label": "DS Bot 架构拆解",
+      "layer": "recon",
+      "status": "done",
+      "evidence": "research/ds-bot-architecture.md 1777 行 / 124,537 B；§0–§8 + 附录 A；31 个宿主模块全读（17 细读 / 14 速读），客户端 55 文件 Compare-Object 零差异",
+      "detail": "宿主模块与客户端模块逐个数出，带源码路径与职责。产出 research/ds-bot-architecture.md。",
+      "kind": "transform",
+      "sources": [
+        {
+          "path": "research/ds-bot-architecture.md"
+        }
+      ]
+    },
+    {
+      "id": "dsh-boundary",
+      "label": "DSH 插件能力边界表",
+      "layer": "recon",
+      "status": "done",
+      "evidence": "research/dsh-plugin-boundaries.md 1095 行 / 85279 字节：§1 插件机制（cordis 三形态、dsh manifest 字段、分层 patch）、§2 129 个 ctx 服务清单（机械扫描 137 条 augmentation / 111 包）、§3 三表（能做 23 / 受限 12 / 做不了 8）、§4 Grok Bot 15 域逐条对标 + 云计算机三条独立否证、§5 299 包按用途分类、§6 插件骨架与陷阱表。",
+      "detail": "边界判定的三条纪律：① 以 lib/types/*.d.ts 契约为准；② 区分 dsh-<capability> 服务定义包与 -local 实现包；③ 区分宿主半边与浏览器半边。核心结论：DSH 的插件边界是「进程内的能力扩展」——凡「给某个 agent 一份独占、隔离、持久的外部资源」都未建模，靠 sandbox（同世界约束）+ approval（人工闸门）+ permissionPresets（三档）管风险，而不是靠隔离。云计算机不能做：computerUse 是独占单例且共享本机桌面（register 第二次即失败），129 个服务里无容器/microVM/远程桌面原语，sandbox README 明写 containers/microVMs/remote execution 需要替换能力实现而非加 provider。",
+      "kind": "transform"
+    },
+    {
+      "id": "gap-analysis",
+      "label": "差距分析",
+      "layer": "design",
+      "status": "done",
+      "evidence": "research/dsh-bot-roadmap.md §1 十五域差距表 + §2 三类差距判据；上游三份产物交叉核对",
+      "detail": "Grok Bot 功能面 × DSH 边界 → 每一条落进 能做/受限/做不了，并标注 DS Bot 是否已实现可借鉴。",
+      "kind": "transform",
+      "sources": [
+        {
+          "path": "research/dsh-bot-roadmap.md"
+        }
+      ]
+    },
+    {
+      "id": "feature-list",
+      "label": "dsh-bot 功能清单与优先级",
+      "layer": "design",
+      "status": "done",
+      "evidence": "research/dsh-bot-roadmap.md §1：15 行表格逐域标注差距性质与难度（无差距 5 / 工程量 2 / 机制缺口 4 / 能力缺口 3 / 混合 1）",
+      "detail": "可清点条数，每条带优先级与依赖。",
+      "kind": "transform",
+      "sources": [
+        {
+          "path": "research/dsh-bot-roadmap.md"
+        }
+      ]
+    },
+    {
+      "id": "roadmap",
+      "label": "实现路线图",
+      "layer": "plan",
+      "status": "done",
+      "evidence": "research/dsh-bot-roadmap.md §3 P0–P4 五段，每段含具体 API 调用、已知限制与一条可核对验收；§4 五个待人裁决决策点",
+      "detail": "产出 research/dsh-bot-roadmap.md，含分阶段落地顺序与验证方式。",
+      "kind": "transform",
+      "sources": [
+        {
+          "path": "research/dsh-bot-roadmap.md"
+        }
+      ]
+    },
+    {
+      "id": "agent-teams-wrap",
+      "label": "agent-teams.ts：TeamService 封装（caller 透传）",
+      "layer": "team-svc",
+      "status": "done",
+      "evidence": "test/agent-teams.test.mjs 3 测试绿：caller 透传/缺失抛错/任务方法透传",
+      "detail": "每个方法接收确切的 live 调用方 Agent 并原样传给原生 API；不合成 caller。"
+    },
+    {
+      "id": "taskboard",
+      "label": "taskboard.ts：任务板 + 依赖全完成才可 claim",
+      "layer": "team-svc",
+      "status": "done",
+      "evidence": "test/taskboard.test.mjs 4 测试绿：canClaim 纯函数/依赖拒绝/claim 标记 owner/waitForChange 透传",
+      "detail": "纯函数 canClaim(task, tasks) 守卫；create/list/update/waitForChange 封装原生 agentTeams 任务。"
+    },
+    {
+      "id": "jev-route",
+      "label": "jev.ts：Jev 决策客户端 + 路由问题构造",
+      "layer": "group-svc",
+      "status": "done",
+      "evidence": "test/jev.test.mjs 6 测试绿：choice 构造/HTTP judge/路由选中/none/降级/未知选项降级",
+      "detail": "POST api.typesafe.ai/v1/systemone，model jev-latest，choice：成员+none；超时/失败走降级。"
+    },
+    {
+      "id": "groupchat",
+      "label": "groupchat.ts：群聊运行时（投递+路由+审批代答）",
+      "layer": "group-svc",
+      "status": "done",
+      "evidence": "test/groupchat.test.mjs 6 测试绿：建群/路由投递/降级提示/无 judge 降级/待批卡应答/reject fail-closed",
+      "detail": "隐藏 root Session + 宿主侧投递（注入 deliverer）；KV 表 groups/messages；审批代答：pending 卡 + 人工应答 resolve。"
+    },
+    {
+      "id": "client-bundle",
+      "label": "client/index.ts：conversation.view 面板 + Bot 详情 + 双语",
+      "layer": "client-p2",
+      "status": "done",
+      "evidence": "lib/client.js 产物带 window.__ModuleLoader__.load banner；slots/locale/sidebarRight 三件 inject；conversation.view + plugins.detail.section 两 slot；双语 zh/en；openTab try/catch 降级",
+      "detail": "inject ['slots','locale','sidebarRight']；locale.register zh/en；plugins.detail.section 最小详情页；ModuleLoader 协议照 skeleton。"
+    }
+  ],
+  "edges": [
+    {
+      "from": "feature-surface",
+      "to": "grok-bot-docs",
+      "label": "功能面逐条挂官方 URL"
+    },
+    {
+      "from": "ds-bot-arch",
+      "to": "ds-bot-source",
+      "label": "31 宿主模块 + 55 客户端文件"
+    },
+    {
+      "from": "dsh-boundary",
+      "to": "dsh-runtime",
+      "label": "137 条服务 / 299 个包契约"
+    },
+    {
+      "from": "gap-analysis",
+      "to": "feature-surface",
+      "label": "十五域逐域对照"
+    },
+    {
+      "from": "gap-analysis",
+      "to": "ds-bot-arch",
+      "label": "参考实现的取舍"
+    },
+    {
+      "from": "gap-analysis",
+      "to": "dsh-boundary",
+      "label": "能做 / 受限 / 做不了"
+    },
+    {
+      "from": "feature-list",
+      "to": "feature-surface",
+      "label": "域清单"
+    },
+    {
+      "from": "feature-list",
+      "to": "dsh-boundary",
+      "label": "差距性质与难度"
+    },
+    {
+      "from": "roadmap",
+      "to": "gap-analysis",
+      "label": "三类差距三种应对"
+    },
+    {
+      "from": "roadmap",
+      "to": "feature-list",
+      "label": "优先级排序"
+    }
+  ]
+}

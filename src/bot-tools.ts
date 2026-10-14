@@ -11,6 +11,7 @@ import type { BotSchedulesRuntime } from './schedules.js'
 import type { MemoryRepo } from './memory.js'
 import type { TemplateStore } from './template.js'
 import type { HostContext, ScheduleCreateRequest, ToolsService } from './types.js'
+import { trace } from './diag.js'
 
 /** MCP server 名文法（预留 P2，先在这里冻结） */
 const MCP_SERVER_NAME_RE = /^[A-Za-z0-9_-]{1,32}$/
@@ -107,7 +108,9 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
     try {
       disposers.push(tools.register(full))
       names.push(definition.name)
+      trace(`register: ${definition.name} ok`)
     } catch (error) {
+      trace(`register: ${definition.name} 失败 ${String(error)}`)
       warn(`注册工具 ${definition.name} 失败：${String(error)}`)
     }
   }

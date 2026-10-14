@@ -1,0 +1,10 @@
+{
+  "id": "decomposes_into",
+  "label": "可分解为",
+  "gloss": "一个产品的功能面能被归纳成哪几个能力域",
+  "kind": "defines",
+  "range": {
+    "form": "statement"
+  },
+  "basis": "本次调研的归纳口径"
+}

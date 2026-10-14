@@ -1,0 +1,77 @@
+{
+  "version": 2,
+  "context": {
+    "summary": "票#5 P0：插件工程骨架 + ctx.storage 身份存储 + agentPresets 名册 + systemPrompt 人格注入。host-only，client 为可编译占位。工作区 dsh-bot-wt-p0，分支 p0/scaffold。",
+    "next": "写测试(红) → 工程文件 → 实现三个 slice → 构建+测试绿 → merge origin/implement/p0 → 提交推送 p0/scaffold"
+  },
+  "title": "dsh-bot P0 · 插件骨架 + 身份/名册/人格",
+  "kind": "dev",
+  "layers": [
+    {
+      "id": "impl",
+      "name": "实现",
+      "rank": 0
+    },
+    {
+      "id": "core",
+      "name": "核心逻辑",
+      "rank": 1
+    },
+    {
+      "id": "verify",
+      "name": "验证与交付",
+      "rank": 2
+    }
+  ],
+  "nodes": [
+    {
+      "id": "pkg-scaffold",
+      "label": "插件工程四件套",
+      "layer": "impl",
+      "status": "done",
+      "evidence": "tsdown 构建出 lib/index.js+lib/client.js（+identity/roster/persona 单文件产物），tsc --noEmit rc=0",
+      "detail": "package.json(dsh.bundle.patch/exports ./client 占位)+cordis.patch.yml+tsdown 双 target+tsconfig"
+    },
+    {
+      "id": "host-entry",
+      "label": "host 入口三件套",
+      "layer": "impl",
+      "status": "done",
+      "evidence": "test/host-entry.test.mjs 3 用例验证 name/inject/apply 注册与降级",
+      "detail": "inject 只含 agentPresets/systemPrompt/storage；apply 内创建 store/roster 并注册人格段"
+    },
+    {
+      "id": "identity-store",
+      "label": "Bot 身份存储(KV)",
+      "layer": "core",
+      "status": "done",
+      "evidence": "test/identity-store.test.mjs 4 用例（含重启重读与降级）",
+      "detail": "src/identity.ts：KV unit dsh-bot(表 bots,v1)；json backend 缺失时内存降级+warn"
+    },
+    {
+      "id": "roster",
+      "label": "Bot 名册",
+      "layer": "core",
+      "status": "done",
+      "evidence": "test/roster.test.mjs 5 用例（含 agentPresets 缺失降级）",
+      "detail": "src/roster.ts：register/list/remove/mount/select，preset id 前缀 dsh-bot:"
+    },
+    {
+      "id": "persona",
+      "label": "人格注入",
+      "layer": "core",
+      "status": "done",
+      "evidence": "test/persona.test.mjs 4 用例",
+      "detail": "src/persona.ts：section 'dsh-bot:persona' order 100，Name/Title/Description；空名册输出空文本"
+    },
+    {
+      "id": "tests",
+      "label": "离线测试(fake ctx)",
+      "layer": "verify",
+      "status": "done",
+      "evidence": "提交 b3ee586 已推送到 origin/p0/scaffold，工作树干净",
+      "detail": "node --test 16/16 + tsc rc=0 + tsdown 构建通过；已合并 origin/implement/p0（7bdc337 探针报告）"
+    }
+  ],
+  "edges": []
+}
