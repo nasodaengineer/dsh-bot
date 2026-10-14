@@ -1,7 +1,7 @@
 {
   "name": "dsh-bot",
   "version": "0.0.1",
-  "description": "对标 Grok Bot 的 DSH 插件：Bot 团队、持久身份、例程与连接器（P0：工程骨架 + 名册 + 人格注入）",
+  "description": "对标 Grok Bot 的 DSH 插件：Bot 团队、持久身份、群聊投递、例程、记忆双轨与审批三档",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

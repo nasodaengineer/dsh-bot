@@ -7,8 +7,7 @@ import { assertMcpServerName, createMcpBridge, isValidMcpServerName, mcpToolName
 
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
-test('bot_* 工具注册：十五个工具名、可注销', async () => {
-  const ctx = fakeContext()
+test('bot_* 工具注册：十五个工具名、可注销', async () => {  const ctx = fakeContext()
   const runtime = apply(ctx, { rootSessionId: 'root-1' })
   await flush()
   assert.ok(runtime.botTools, 'botTools 应已挂载')
@@ -32,6 +31,22 @@ test('bot_* 工具注册：十五个工具名、可注销', async () => {
   runtime.botTools.dispose()
   assert.deepEqual([...runtime.botTools.names], [])
   assert.ok(ctx.calls.filter((c) => c.startsWith('tool dispose ')).length === 15)
+})
+
+test('实测回归：宿主强制 output 字段——每个注册定义都带 output.schema+render（dsh-tools index.d.ts:115）', async () => {
+  const ctx = fakeContext()
+  const runtime = apply(ctx, { rootSessionId: 'root-1' })
+  await flush()
+  assert.ok(ctx.registeredTools.size === 15, `应注册 15 个工具，实际 ${ctx.registeredTools.size}`)
+  for (const [name, tool] of ctx.registeredTools) {
+    assert.ok(tool.output, `${name} 缺 output`)
+    assert.ok(tool.output.schema !== undefined, `${name} output.schema 缺失`)
+    const blocks = tool.output.render({}, { ok: true })
+    assert.ok(Array.isArray(blocks) && blocks.length === 1, `${name} render 应返回单块`)
+    assert.equal(blocks[0].type, 'text')
+    assert.equal(blocks[0].text, '{"ok":true}')
+  }
+  runtime.botTools.dispose()
 })
 
 test('bot_schedule_create：六形态之一（cron）转 schedule.create（root Session）', async () => {

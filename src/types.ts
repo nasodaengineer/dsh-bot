@@ -93,11 +93,20 @@ export interface SessionControllerService {
   selectModel(request: ModelSelection & { sessionId: string }): Promise<{ selected: ModelSelection }>
 }
 
-/** dsh-tools 的 ToolDefinition / register 切片（lib/types/index.d.ts:636） */
+/** dsh-tools 的 ToolDefinition / register 切片（lib/types/index.d.ts:115）。 */
+export interface ToolOutputDefinition {
+  /** 成功返回值的 JSON Schema（宿主逐笔校验）；`{}` 为最宽松形状。 */
+  readonly schema: unknown
+  /** 纯投影：把 (args, value) 渲染为模型可见 ContentBlock[]。 */
+  render(args: unknown, value: unknown): unknown[]
+}
+
 export interface ToolDefinition {
   readonly name: string
   readonly description: string
   readonly parameters: unknown
+  /** 宿主强制字段：缺失时 register 直接拒绝（实测 #1 根因，2026-10-14）。 */
+  readonly output?: ToolOutputDefinition
   execute(args: unknown, exec?: unknown): Promise<unknown>
 }
 

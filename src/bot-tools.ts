@@ -92,8 +92,20 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
   const warn = (message: string) => ctx.logger?.warn(`dsh-bot: ${message}`)
 
   const register = (definition: Parameters<ToolsService['register']>[0]) => {
+    // 宿主 ToolDefinition 强制 output 字段（dsh-tools index.d.ts:115「Mandatory」），
+    // 缺失时 register 直接抛错。这里统一补默认投影，业务侧只写 execute。
+    const full =
+      (definition as { output?: unknown }).output !== undefined
+        ? definition
+        : ({
+            ...definition,
+            output: {
+              schema: {},
+              render: (_args: unknown, value: unknown) => [{ type: 'text', text: JSON.stringify(value) }],
+            },
+          } as Parameters<ToolsService['register']>[0])
     try {
-      disposers.push(tools.register(definition))
+      disposers.push(tools.register(full))
       names.push(definition.name)
     } catch (error) {
       warn(`注册工具 ${definition.name} 失败：${String(error)}`)
