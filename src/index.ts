@@ -235,17 +235,19 @@ function attachRuntimes(
     })
   })
 
-  ctx.inject(['schedule'], (services) => {
+  // 实测#4：宿主后端 ctx 没有 cordis Service 'schedule'（schedule 是经 api-remotes/
+  // 增强挂在 ctx 上的属性，dsh-tool-schedule 同样直接弱读），inject 等不到——改惰性弱读。
+  {
     const rootSessionId = options.rootSessionId
     if (rootSessionId === undefined) {
       ctx.logger?.warn('dsh-bot: 未配置 rootSessionId，例程运行时不挂载（例程必须绑定 root Session）')
-      return
+    } else {
+      runtime.schedules = attachBotSchedules(ctx, {
+        schedule: () => (ctx as unknown as { schedule?: ScheduleService }).schedule,
+        rootSessionId,
+      })
     }
-    runtime.schedules = attachBotSchedules(ctx, {
-      schedule: services.schedule as ScheduleService,
-      rootSessionId,
-    })
-  })
+  }
 
   // 票 #14：决策双后端。autoDecide 服务是运行期可选依赖（dsh-auto-decide 提供），
   // 到齐即挂、掉了重挂；judge 在每次判定时弱读，缺失自动降级 builtin。

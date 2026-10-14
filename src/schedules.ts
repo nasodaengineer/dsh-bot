@@ -27,9 +27,19 @@ const TIMING_FIELDS = ['after_seconds', 'at', 'every_seconds', 'daily', 'weekly'
 
 export function attachBotSchedules(
   ctx: HostContext,
-  opts: { schedule: ScheduleService; rootSessionId: string },
+  opts: { schedule: ScheduleService | (() => ScheduleService | undefined); rootSessionId: string },
 ): BotSchedulesRuntime {
-  const { schedule, rootSessionId } = opts
+  const { rootSessionId } = opts
+  // 实测#4：宿主后端 ctx 上没有名为 'schedule' 的 cordis Service（dsh-tool-schedule
+  // 也是直接弱读 ctx.schedule，见其 index.js:539），inject(['schedule']) 永远等不到。
+  // 改为调用时惰性弱读：宿主挂了就能用，没挂走统一的未挂载错误。
+  const resolveSchedule = (): ScheduleService | undefined =>
+    typeof opts.schedule === 'function' ? opts.schedule() : opts.schedule
+  const requireSchedule = (): ScheduleService => {
+    const schedule = resolveSchedule()
+    if (schedule === undefined) throw new Error('dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）')
+    return schedule
+  }
   const warn = (message: string) => ctx.logger?.warn(`dsh-bot: ${message}`)
 
   if (typeof rootSessionId !== 'string' || rootSessionId.trim() === '') {
@@ -59,14 +69,14 @@ export function attachBotSchedules(
 
     async create(request) {
       validate(request)
-      const record = await schedule.create(rootSessionId, request)
+      const record = await requireSchedule().create(rootSessionId, request)
       known.set(record.id, request)
       return record
     },
 
     async list() {
       try {
-        return await schedule.list({ sessionId: rootSessionId })
+        return await requireSchedule().list({ sessionId: rootSessionId })
       } catch (error) {
         warn(`列例程失败：${String(error)}`)
         return []
@@ -74,6 +84,7 @@ export function attachBotSchedules(
     },
 
     async pause(id) {
+      const schedule = requireSchedule()
       const request = known.get(id)
       if (request === undefined) return false
       const deleted = await schedule.delete({ sessionId: rootSessionId, id })
@@ -84,6 +95,7 @@ export function attachBotSchedules(
     },
 
     async resume(id) {
+      const schedule = requireSchedule()
       const request = paused.get(id)
       if (request === undefined) return undefined
       const record = await schedule.create(rootSessionId, request)
@@ -93,6 +105,7 @@ export function attachBotSchedules(
     },
 
     async delete(id) {
+      const schedule = requireSchedule()
       const existed = known.delete(id)
       paused.delete(id)
       return (await schedule.delete({ sessionId: rootSessionId, id })) || existed

@@ -97,6 +97,10 @@ export function fakeContext({ services = {}, disable = [], storage = true } = {}
       return execute()
     },
     agentPresets,
+    // 实测#4：插件改为惰性弱读 ctx.schedule（宿主后端无 cordis Service 'schedule'）
+    get schedule() {
+      return services.schedule
+    },
     systemPrompt: {
       section(section) {
         calls.push(`prompt ${section.name} ${section.order}`)
