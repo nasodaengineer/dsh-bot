@@ -42,13 +42,20 @@ export async function openKvUnit(ctx: HostContext): Promise<{ kv: KvUnit | undef
     hasGlobal: false,
   }
   const backend = ctx.storage?.backend
-  if (backend === undefined) return { kv: undefined, descriptor }
-  try {
-    const medium = backend.get(BACKEND_NAME) as { kv?: { open(d: unknown): Promise<KvUnit> } } | undefined
-    const kv = medium?.kv
-    if (kv === undefined) return { kv: undefined, descriptor }
-    return { kv: await kv.open(descriptor), descriptor }
-  } catch {
-    return { kv: undefined, descriptor }
-  }
+  // 实测#8 探针：trace KV 后端解析情况
+    try {
+      const fs = await import('node:fs')
+      const names = backend ? (backend as unknown as { backends?: Map<string, unknown> }).backends : undefined
+      fs.appendFileSync('E:\\data\\my-work\\dsh\\my-plugins\\dsh-bot\\.dsh-test-dsh-bot\\apply-trace.log',
+        `${new Date().toISOString()} [pid=${process.pid}] openKvUnit: storage=${typeof ctx.storage} backend=${typeof backend} registered=[${names ? [...names.keys()].join(',') : 'n/a'}]\n`)
+    } catch { /* 探针失败忽略 */ }
+    if (backend === undefined) return { kv: undefined, descriptor }
+    try {
+      const medium = backend.get(BACKEND_NAME) as { kv?: { open(d: unknown): Promise<KvUnit> } } | undefined
+      const kv = medium?.kv
+      if (kv === undefined) return { kv: undefined, descriptor }
+      return { kv: await kv.open(descriptor), descriptor }
+    } catch {
+      return { kv: undefined, descriptor }
+    }
 }
