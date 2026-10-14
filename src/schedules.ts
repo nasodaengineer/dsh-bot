@@ -42,10 +42,12 @@ export function attachBotSchedules(
       // 实测#4 诊断探针：定位宿主 schedule 服务的真实挂载点（定位后移除）
       try {
         const probe = ctx as unknown as Record<string, unknown>
-        const keysOf = (v: unknown): string => (v && typeof v === 'object' ? Object.keys(v).slice(0, 40).join(',') : typeof v)
-        let getCall = 'no-get'
-        if (typeof probe.get === 'function') { try { getCall = `get('schedule')=${keysOf((probe.get as (n: string) => unknown)('schedule'))}` } catch (e) { getCall = `get throw:${(e as Error).message}` } }
-        protoTrace(`schedule 探针: calls=[${keysOf(probe.calls)}] connection=[${keysOf(probe.connection)}] ${getCall}`)
+        const calls = probe.calls as unknown[] | undefined
+        const sample = Array.isArray(calls) && calls.length > 0
+          ? String(JSON.stringify(calls.find((c) => c && typeof c === 'object') ?? calls[0])).slice(0, 400)
+          : `len=${calls?.length ?? 'n/a'}`
+        const fetchFn = (probe.connection as Record<string, unknown> | undefined)?.fetch
+        protoTrace(`schedule 探针: callSample=${sample} fetch=${typeof fetchFn}${typeof fetchFn === 'function' ? ` fnSrc=${String(fetchFn).slice(0, 200)}` : ''}`)
       } catch (e) { protoTrace(`schedule 探针异常: ${(e as Error).message}`) }
       throw new Error('dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）')
     }
