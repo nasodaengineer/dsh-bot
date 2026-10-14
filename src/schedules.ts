@@ -42,12 +42,10 @@ export function attachBotSchedules(
       // 实测#4 诊断探针：定位宿主 schedule 服务的真实挂载点（定位后移除）
       try {
         const probe = ctx as unknown as Record<string, unknown>
-        const allKeys = Object.keys(probe).join(',')
-        const scheds = probe.schedules as Record<string, unknown> | undefined
-        const schedsInfo = scheds && typeof scheds === 'object'
-          ? `schedules.keys=[${Object.keys(scheds).join(',')}] schedules.vals=[${Object.keys(scheds).map((k) => typeof scheds[k]).join(',')}]`
-          : `schedules=${typeof probe.schedules}`
-        protoTrace(`schedule 探针: ctx.keys=[${allKeys}] ${schedsInfo}`)
+        const keysOf = (v: unknown): string => (v && typeof v === 'object' ? Object.keys(v).slice(0, 40).join(',') : typeof v)
+        let getCall = 'no-get'
+        if (typeof probe.get === 'function') { try { getCall = `get('schedule')=${keysOf((probe.get as (n: string) => unknown)('schedule'))}` } catch (e) { getCall = `get throw:${(e as Error).message}` } }
+        protoTrace(`schedule 探针: calls=[${keysOf(probe.calls)}] connection=[${keysOf(probe.connection)}] ${getCall}`)
       } catch (e) { protoTrace(`schedule 探针异常: ${(e as Error).message}`) }
       throw new Error('dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）')
     }
