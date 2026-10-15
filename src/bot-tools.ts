@@ -142,6 +142,7 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
             name: b.name,
             title: b.title,
             description: b.description,
+            ...(b.color !== undefined ? { color: b.color } : {}),
             ...(b.persona !== undefined ? { persona: b.persona } : {}),
           })),
         }
@@ -158,6 +159,7 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
         title: { type: 'string', description: '角色/头衔' },
         description: { type: 'string', description: '人格/职责描述' },
         persona: { type: 'string', description: '人格提示词正文，注入该 Bot 的 systemPrompt' },
+        color: { type: 'string', description: '侧栏颜色（如 blue / #4a90d9）' },
         id: { type: 'string', description: '可选自定义 id；缺省自动生成' },
       },
       required: ['name'],
@@ -170,6 +172,7 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
           title?: unknown
           description?: unknown
           persona?: unknown
+          color?: unknown
           id?: unknown
         }
         const name = typeof a.name === 'string' && a.name.trim() !== '' ? a.name.trim() : undefined
@@ -182,6 +185,7 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
           createdAt: new Date().toISOString(),
         }
         if (typeof a.persona === 'string' && a.persona.trim() !== '') identity.persona = a.persona.trim()
+        if (typeof a.color === 'string' && a.color.trim() !== '') identity.color = a.color.trim()
         await deps.roster.create(identity)
         return {
           ok: true,
@@ -190,6 +194,7 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
             name: identity.name,
             title: identity.title,
             description: identity.description,
+            ...(identity.color !== undefined ? { color: identity.color } : {}),
             ...(identity.persona !== undefined ? { persona: identity.persona } : {}),
           },
         }
