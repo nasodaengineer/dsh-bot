@@ -188,8 +188,11 @@ export interface HostContext {
   readonly approval?: ApprovalService
   readonly permissionPresets?: PermissionPresetsService
   readonly schedule?: ScheduleService
-  /** 订阅宿主事件，如 'agent/created' */
-  on(event: string, handler: (payload: unknown) => unknown, options?: unknown): unknown
+  /**
+   * 订阅宿主事件，如 'agent/created'。事件瀑布（如 'approval/request'）的 handler 收
+   * (payload, next)：返回 next() 让事件继续下传，返回其他值即认领该事件。
+   */
+  on(event: string, handler: (payload: unknown, next: () => unknown) => unknown, options?: unknown): unknown
   /** cordis 运行期可选依赖：服务到齐后执行，掉了重跑（registry.d.ts:111） */
   inject(names: readonly string[], callback: (services: Record<string, unknown>) => void): unknown
 }

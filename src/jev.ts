@@ -29,7 +29,9 @@ export interface DecideOutcome {
 }
 
 export interface AutoDecideService {
-  decode(request: { state: unknown; questions: Record<string, unknown> }): Promise<DecideOutcome>
+  /* 实测#12：my-auto-decide DecideRequest 的字段是 stateText（service.ts:61，state.requireExplicit
+   * 默认开，要求显式传「要判定的原文」字符串）——不是早前切片猜的 state 对象 */
+  decode(request: { state?: unknown; stateText?: string; questions: Record<string, unknown> }): Promise<DecideOutcome>
 }
 
 export type DecisionBackendMode = 'autoDecide' | 'builtin'
@@ -207,7 +209,9 @@ export async function judgeApprovalDenial(
   try {
     const outcome = await withTimeout(
       service.decode({
-        state: { toolName: input.toolName, summary: input.summary ?? '' },
+        // 实测#12：my-auto-decide 的字段是 stateText（state.requireExplicit 默认开，要求显式
+        // 传「要判定的原文」字符串）。内置 TypeSafe 直连那条路仍用 state 对象。
+        stateText: renderStateText({ toolName: input.toolName, summary: input.summary ?? '' }),
         questions: {
           deny: {
             type: 'noul',
@@ -256,7 +260,33 @@ export interface JevBackendOptions {
 let warnedAutoDecideMissing = false
 
 /**
- * 票 #14 双后端解析：默认 autoDecide 优先——服务在且 decode 成功则透传 DecideOutcome.answers
+ * 实测#12：内置 state 对象 → autoDecide stateText 的渲染。群聊路由 state 是
+ * {members, transcript}，审批判定 state 是 {toolName, summary}——用可读文本呈现，
+ * 不依赖对方接受任意 JSON（my-auto-decide 要求「要判定的原文」字符串）。
+ */
+export function renderStateText(state: unknown): string {
+  if (typeof state === 'string') return state
+  if (state !== null && typeof state === 'object') {
+    const rec = state as Record<string, unknown>
+    if (typeof rec.toolName === 'string') {
+      return `工具调用审批请求\n工具名：${rec.toolName}\n摘要：${typeof rec.summary === 'string' ? rec.summary : ''}`
+    }
+    const members = Array.isArray(rec.members) ? rec.members : []
+    const transcript = Array.isArray(rec.transcript) ? rec.transcript : []
+    const memberLines = members.map((m) => {
+      const mm = m as Record<string, unknown>
+      return `- ${String(mm.id)}${typeof mm.name === 'string' ? `（${mm.name}）` : ''}${typeof mm.description === 'string' ? `：${mm.description}` : ''}`
+    })
+    const lines = transcript.map((t) => {
+      const tt = t as Record<string, unknown>
+      return `${String(tt.from ?? '?')}: ${String(tt.text ?? '')}`
+    })
+    return `群聊成员：\n${memberLines.join('\n')}\n\n最近对话：\n${lines.join('\n')}`
+  }
+  return String(state)
+}
+
+/** 票 #14 双后端解析：默认 autoDecide 优先——服务在且 decode 成功则透传 DecideOutcome.answers
  * （choice/score/noul 题型原样透传，路由消费方只读 choice/confidence）；服务不在/decode 抛错/
  * 超时 → 自动降级 builtin。decision='builtin' 时跳过 autoDecide。两个后端都不可用时返回
  * undefined（由调用方走「未配置决策模型」降级文案），运行期双双缺失则抛错交给 routeTurn 降级。
@@ -273,7 +303,11 @@ export function resolveJevBackend(options: JevBackendOptions): JevJudge | undefi
     if (service !== undefined) {
       try {
         const outcome = await withTimeout(
-          service.decode({ state: request.state, questions: request.questions }),
+          service.decode({
+            // 实测#12：my-auto-decide 要求 stateText（要判定的原文字符串），不是内置直连的 state 对象
+            stateText: renderStateText(request.state),
+            questions: request.questions,
+          }),
           timeoutMs,
           'autoDecide decode 超时',
         )

@@ -318,7 +318,8 @@ function attachRuntimes(
     ctx.inject(['sessionController'], (services) => {
       sessionCtrlRef.ctrl = services.sessionController as { prompt(request: unknown, signal: AbortSignal): Promise<unknown> }
     })
-    runtime.groups.setDeliverer(async (groupId, delivery) => {
+    const groups = runtime.groups as GroupChatRuntime
+    groups.setDeliverer(async (groupId: string, delivery: { sessionId: string; responder: string; message: { text?: string } }) => {
       const ctrl = sessionCtrlRef.ctrl
       if (ctrl === undefined) {
         throw new Error('dsh-bot: sessionController 服务未挂载，群投递不可用')
@@ -342,12 +343,15 @@ function attachRuntimes(
     // 审批拦截接线（票 #7/#16）：全局 approval/request 瀑布监听 + 群载体 Session 过滤。
     // 非群会话立即 next() 下传（零行为变化）；群会话认领 → 待批卡 → 人工应答回灌 outcome。
     // fail-closed：requestApproval 超时/不可用返回 'unavailable'（宿主语义：调用方 fail closed）。
-    ctx.on('approval/request', async (raw, next) => {
+    const groupsRuntime = runtime.groups as GroupChatRuntime | undefined
+    ctx.on('approval/request', async (raw: unknown, next: () => unknown) => {
       const req = raw as { agent?: { session?: { id?: unknown } }; toolName?: unknown; reason?: unknown }
       const sessionId = req?.agent?.session?.id
-      const group = typeof sessionId === 'string' ? runtime.groups?.groupBySession(sessionId) : undefined
-      if (group === undefined) return next()
-      const decision = await runtime.groups.requestApproval({
+      const group = groupsRuntime !== undefined && typeof sessionId === 'string'
+        ? groupsRuntime.groupBySession(sessionId)
+        : undefined
+      if (group === undefined || groupsRuntime === undefined) return next()
+      const decision = await groupsRuntime.requestApproval({
         groupId: group.id,
         toolName: typeof req.toolName === 'string' ? req.toolName : 'unknown',
         summary: typeof req.reason === 'string' ? req.reason : undefined,
