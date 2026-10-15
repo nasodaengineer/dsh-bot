@@ -55,26 +55,13 @@ export async function openKvUnit(ctx: HostContext): Promise<{ kv: KvUnit | undef
   const cached = openedUnit.get(backend)
   if (cached !== undefined) return { kv: await cached, descriptor }
   const pending = (async (): Promise<KvUnit | undefined> => {
-    // 实测#8 探针：trace KV 后端解析情况
-    try {
-      const fs = await import('node:fs')
-      const names = backend ? (backend as unknown as { backends?: Map<string, unknown> }).backends : undefined
-      fs.appendFileSync('E:\\data\\my-work\\dsh\\my-plugins\\dsh-bot\\.dsh-test-dsh-bot\\apply-trace.log',
-        `${new Date().toISOString()} [pid=${process.pid}] openKvUnit: storage=${typeof ctx.storage} backend=${typeof backend} registered=[${names ? [...names.keys()].join(',') : 'n/a'}]\n`)
-    } catch { /* 探针失败忽略 */ }
     if (backend === undefined) return undefined
     try {
       const medium = backend.get(BACKEND_NAME) as { kv?: { open(d: unknown): Promise<KvUnit> } } | undefined
       const kv = medium?.kv
       if (kv === undefined) return undefined
       return await kv.open(descriptor)
-    } catch (err) {
-      // 实测#8 探针：open 失败原因
-      try {
-        const fs = await import('node:fs')
-        fs.appendFileSync('E:\\data\\my-work\\dsh\\my-plugins\\dsh-bot\\.dsh-test-dsh-bot\\apply-trace.log',
-          `${new Date().toISOString()} [pid=${process.pid}] openKvUnit: open FAILED ${(err as Error)?.message ?? String(err)}\n`)
-      } catch { /* 探针失败忽略 */ }
+    } catch {
       return undefined
     }
   })()

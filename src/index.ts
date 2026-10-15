@@ -14,8 +14,7 @@
  * 分层混合决策（票 #2/#3）：spawn/消息/任务板归 ctx.agentTeams（P2 做）；
  * Bot 持久身份走自有 KV 状态。本票不做任何 client 侧注入（P2 的事）。
  */
-import { randomUUID } from 'node:crypto'
-import type { AgentEventPayload, BotIdentity, HostContext, LlmService, SessionControllerService, ToolsService, CredentialsService, ApprovalService, ScheduleService } from './types.js'
+import type { AgentEventPayload, BotIdentity, CreatedAgent, HostContext, LlmService, SessionControllerService, ToolsService, CredentialsService, ApprovalService, ScheduleService } from './types.js'
 import { createIdentityStore, type IdentityStore } from './identity.js'
 import { createRoster, type BotRoster } from './roster.js'
 import { personaSection } from './persona.js'
@@ -31,7 +30,6 @@ import { createGroupChatRuntime, createRootSessionCarrier, type GroupChatRuntime
 import { createMemoryRepo, type MemoryRepo } from './memory.js'
 import { createTemplateStore, type TemplateStore } from './template.js'
 import { attachHttpEndpoint, type HttpEndpointRuntime } from './endpoint.js'
-import { trace } from './diag.js'
 
 export const name = 'dsh-bot'
 
@@ -99,29 +97,32 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     endpoint?: HttpEndpointRuntime
   } = {}
   let storeRef: IdentityStore | undefined
+  /** agent/created 给出的 Agent 句柄；bot_select 需要它才能重绑 preset（见 selection.selectBot） */
+  let pendingAgent: CreatedAgent | undefined
 
   const mcp = createMcpBridge(options.mcpServers ?? [])
 
-  // agent/created 注入（票 #6 接 P0 接缝 2）：会话启动时把人格文本注入 Agent。
+  // agent/created：会话首个 turn 之前把 Bot 绑到它的 preset（票 #13 实测 #12 补）。
+  // 顺序要紧：agentPresets.select 是 @Remote 且只接受尚未开始回合的会话
+  // （packages/preset/agent-preset-registry/src/index.ts:351，lastTurn > 0 时抛
+  // `agent-preset/locked`），所以这里必须赶在首个 turn 前，且失败只 warn——
+  // 人格的 KV 路径（personaSection）不依赖 preset，装配面挂不上不该拖垮会话。
   function handleAgentCreated(payload: AgentEventPayload): void {
     const agent = payload.agent
-    if (agent?.inject === undefined) return
-    const selected = runtime.selectedId
-    // A1：IIFE 内部任何拒绝都要就地捕获，不能逃逸外层 try/catch（同步捕获管不到异步）
+    if (agent === undefined) return
+    pendingAgent = agent
     void (async () => {
       const roster = runtime.roster
-      if (roster === undefined) return
-      const bots = await roster.list()
-      const bot = selected !== undefined ? bots.find((b) => b.id === selected) : undefined
-      if (bot === undefined) return
-      agent.inject?.({
-        id: randomUUID(),
-        role: 'user',
-        content: [{ type: 'text', text: `[dsh-bot] 当前 Bot：${bot.name}（${bot.title}）\n${bot.description}` }],
-        source: { kind: 'plugin:dsh-bot' },
-      })
+      if (roster === undefined || !roster.presetsAvailable) return
+      const selected = runtime.selectedId
+      if (selected === undefined) return
+      try {
+        await roster.select(agent, selected)
+      } catch (error) {
+        ctx.logger?.warn(`dsh-bot: 会话启动绑定 preset 失败（人格段仍走 KV 路径）：${String(error)}`)
+      }
     })().catch((error) => {
-      ctx.logger?.warn(`dsh-bot: agent/created 异步注入失败：${String(error)}`)
+      ctx.logger?.warn(`dsh-bot: agent/created preset 绑定异常：${String(error)}`)
     })
   }
 
@@ -131,6 +132,17 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
     async selectBot(id: string) {
       runtime.selectedId = id
       await storeRef?.putSelectedId(id)
+      // preset 装配面追同步：会话已开始时会抛 agent-preset/locked（注册表 :351），
+      // 该路径只对尚未开始回合的会话有效，所以失败不阻断选中（人格走 KV 路径）。
+      const agent = pendingAgent
+      const roster = runtime.roster
+      if (agent !== undefined && roster !== undefined && roster.presetsAvailable) {
+        try {
+          await roster.select(agent, id)
+        } catch (error) {
+          ctx.logger?.warn(`dsh-bot: bot_select 绑定 preset 失败（会话可能已开始回合）：${String(error)}`)
+        }
+      }
     },
     selectedBotId() {
       return runtime.selectedId
@@ -144,11 +156,9 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
   }
 
   void (async () => {
-    trace('apply: async 装配开始')
     const store = await createIdentityStore(ctx)
     const roster = await createRoster(ctx, store)
     runtime.roster = roster
-    trace('apply: identity+roster 完成')
     storeRef = store
     runtime.selectedId = await store.getSelectedId()
     // 票 #10：记忆仓库与身份共用 KV unit 'dsh-bot'（自有表），失败内部降级
@@ -178,9 +188,7 @@ export function apply(ctx: HostContext, options: ApplyOptions = {}): DshBotRunti
 
     // P1 功能面：运行期可选依赖，到齐即挂，掉了重挂。
     attachRuntimes(ctx, runtime, store, options, selection)
-    trace('apply: attachRuntimes 完成（inject 订阅已注册）')
   })().catch((error) => {
-    trace(`apply: 初始化失败 ${String(error)}`)
     ctx.logger?.warn(`dsh-bot: 初始化失败：${String(error)}`)
   })
 
@@ -223,7 +231,6 @@ function attachRuntimes(
   const getSchedules = () => runtime.schedules as BotSchedulesRuntime | undefined
   ctx.inject(['tools'], (services) => {
     const roster = runtime.roster as BotRoster | undefined
-    trace(`inject(tools): 触发 roster=${roster !== undefined ? 'ok' : 'undefined'} toolsSvc=${services.tools !== undefined ? 'ok' : 'undefined'}`)
     if (roster === undefined) return
     runtime.botTools = attachBotTools(ctx, services.tools as ToolsService, {
       roster,

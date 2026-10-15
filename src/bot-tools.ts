@@ -11,8 +11,7 @@ import type { BotSchedulesRuntime } from './schedules.js'
 import type { MemoryRepo } from './memory.js'
 import type { TemplateStore } from './template.js'
 import type { GroupChatRuntime } from './groupchat.js'
-import type { HostContext, ScheduleCreateRequest, ToolsService } from './types.js'
-import { trace } from './diag.js'
+import type { HostContext, BotIdentity, ScheduleCreateRequest, ToolsService } from './types.js'
 
 /** MCP server 名文法（预留 P2，先在这里冻结） */
 const MCP_SERVER_NAME_RE = /^[A-Za-z0-9_-]{1,32}$/
@@ -125,9 +124,7 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
     try {
       disposers.push(tools.register(full))
       names.push(definition.name)
-      trace(`register: ${definition.name} ok`)
     } catch (error) {
-      trace(`register: ${definition.name} 失败 ${String(error)}`)
       warn(`注册工具 ${definition.name} 失败：${String(error)}`)
     }
   }
@@ -139,7 +136,15 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
     execute: () =>
       safeExecute(async () => {
         const bots = await deps.roster.list()
-        return { bots: bots.map((b) => ({ id: b.id, name: b.name, title: b.title, description: b.description })) }
+        return {
+          bots: bots.map((b) => ({
+            id: b.id,
+            name: b.name,
+            title: b.title,
+            description: b.description,
+            ...(b.persona !== undefined ? { persona: b.persona } : {}),
+          })),
+        }
       }),
   })
 
@@ -152,6 +157,7 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
         name: { type: 'string', description: 'Bot 名字（必填）' },
         title: { type: 'string', description: '角色/头衔' },
         description: { type: 'string', description: '人格/职责描述' },
+        persona: { type: 'string', description: '人格提示词正文，注入该 Bot 的 systemPrompt' },
         id: { type: 'string', description: '可选自定义 id；缺省自动生成' },
       },
       required: ['name'],
@@ -159,18 +165,34 @@ export function attachBotTools(ctx: HostContext, tools: ToolsService, deps: BotT
     },
     execute: (args: unknown) =>
       safeExecute(async () => {
-        const a = (args ?? {}) as { name?: unknown; title?: unknown; description?: unknown; id?: unknown }
+        const a = (args ?? {}) as {
+          name?: unknown
+          title?: unknown
+          description?: unknown
+          persona?: unknown
+          id?: unknown
+        }
         const name = typeof a.name === 'string' && a.name.trim() !== '' ? a.name.trim() : undefined
         if (name === undefined) throw new Error('name 必填')
-        const identity = {
+        const identity: BotIdentity = {
           id: typeof a.id === 'string' && a.id.trim() !== '' ? a.id.trim() : `bot-${Date.now().toString(36)}`,
           name,
           title: typeof a.title === 'string' ? a.title : '',
           description: typeof a.description === 'string' ? a.description : '',
           createdAt: new Date().toISOString(),
         }
+        if (typeof a.persona === 'string' && a.persona.trim() !== '') identity.persona = a.persona.trim()
         await deps.roster.create(identity)
-        return { ok: true, bot: { id: identity.id, name: identity.name, title: identity.title, description: identity.description } }
+        return {
+          ok: true,
+          bot: {
+            id: identity.id,
+            name: identity.name,
+            title: identity.title,
+            description: identity.description,
+            ...(identity.persona !== undefined ? { persona: identity.persona } : {}),
+          },
+        }
       }),
   })
 

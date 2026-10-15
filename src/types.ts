@@ -36,6 +36,10 @@ export interface BotIdentity {
   description: string
   /** 侧栏颜色（可缺省） */
   color?: string
+  /** 人格提示词正文：注入该 Bot 的 systemPrompt（可缺省，缺省则只用 description） */
+  persona?: string
+  /** 创建时间（可缺省，写入时由 roster.create 填） */
+  createdAt?: string
 }
 
 /** dsh-agent-preset-registry 的 PresetDefinition 切片（lib/types/definition.d.ts，plugins 必填） */

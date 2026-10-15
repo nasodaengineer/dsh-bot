@@ -24,6 +24,9 @@ function renderBot(identity: BotIdentity): string {
   const lines = [`Name: ${identity.name}`]
   if (identity.title) lines.push(`Title: ${identity.title}`)
   if (identity.description) lines.push(`Description: ${identity.description}`)
+  if (identity.persona !== undefined && identity.persona.trim() !== '') {
+    lines.push(`Persona: ${identity.persona.trim()}`)
+  }
   return lines.join('\n')
 }
 

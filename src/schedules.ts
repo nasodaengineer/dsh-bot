@@ -9,7 +9,6 @@
  * 重建后的 record id 会变（诚实告知调用方）。
  */
 import type { HostContext, ScheduleCreateRequest, ScheduleRecord, ScheduleService } from './types.js'
-import { trace as protoTrace } from './diag.js'
 
 export interface BotSchedulesRuntime {
   create(sessionId: string, request: ScheduleCreateRequest): Promise<ScheduleRecord>
@@ -52,19 +51,6 @@ export function attachBotSchedules(
   const requireSchedule = (): ScheduleService => {
     const schedule = resolveSchedule()
     if (schedule === undefined) {
-      // 实测#4 诊断探针：定位宿主 schedule 服务的真实挂载点（定位后移除）
-      try {
-        const probe = ctx as unknown as Record<string, unknown>
-        const fetchObj = (probe.connection as Record<string, unknown> | undefined)?.fetch as Record<string, unknown> | undefined
-        const fetchInfo = fetchObj && typeof fetchObj === 'object'
-          ? `fetch.keys=[${Object.keys(fetchObj).join(',')}] fetch.vals=[${Object.keys(fetchObj).map((k) => typeof fetchObj[k]).join(',')}]`
-          : `fetch=${typeof fetchObj}`
-        const calls = probe.calls as unknown[] | undefined
-        const schedCalls = Array.isArray(calls)
-          ? calls.filter((c) => typeof c === 'string' && c.toLowerCase().includes('sched')).slice(0, 5).join(' | ') || 'none-string'
-          : 'not-array'
-        protoTrace(`schedule 探针: callsLen=${calls?.length ?? 'n/a'} schedCalls=[${schedCalls}] ${fetchInfo}`)
-      } catch (e) { protoTrace(`schedule 探针异常: ${(e as Error).message}`) }
       throw new Error('dsh-bot: schedule 服务未挂载（宿主未开 Automation tasks）')
     }
     return schedule

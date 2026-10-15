@@ -8,9 +8,9 @@
 
 1. **插件工程**：`package.json`（`type: module` / `main: lib/index.js` / `dsh.bundle.patch` / `exports` 含 `./client` 占位）+ `cordis.patch.yml`（insert 一行）+ `tsdown.config.ts` 双目标（host esm/node；client cjs/browser，ModuleLoader 协议包裹）。
 2. **host 入口**：`name = 'dsh-bot'`；`inject = ['agentPresets', 'systemPrompt', 'storage']`（静态 inject 只放 P0 真正用到的服务）；`apply(ctx)`。
-3. **状态层**：`src/identity.ts` —— 基于 `ctx.storage`（KV hub）的 Bot 身份存储。KV unit `dsh-bot`（表 `bots` + `selection`，version 1）。`json` backend 或 `ctx.storage` 缺失时降级为进程内 Map 并 `warn`（降级不抛错、不破坏激活）。
-4. **Bot 名册**：`src/roster.ts` —— 分层混合：持久身份存自有 KV 状态（原生 roster 扁平不可变，无重命名/删除），装配面透传原生 `ctx.agentPresets` 的 `register/list/mount/select`；preset id 统一加 `dsh-bot:` 前缀。
-5. **人格注入**：`src/persona.ts` —— `ctx.systemPrompt.section({ name: 'dsh-bot:persona', order: 100 })`，把选中 Bot 的 Name/Title/Description 拼进提示词段；名册为空时输出空文本（渲染层丢弃空段）。
+3. **状态层**：`src/identity.ts` —— 基于 `ctx.storage`（KV hub）的 Bot 身份存储。KV unit `dsh_bot`（表 `bots` + `selection`，version 1；unit 名不允许连字符，故用下划线）。`json` backend 或 `ctx.storage` 缺失时降级为进程内 Map 并 `warn`（降级不抛错、不破坏激活）。
+4. **Bot 名册**：`src/roster.ts` —— 分层混合：持久身份存自有 KV 状态（原生 roster 扁平不可变，无重命名/删除），装配面透传原生 `ctx.agentPresets` 的 `register/list/mount/select`；preset id 统一加 `dsh-bot:` 前缀。启动时按 KV 重建 preset（注册表是进程内的，重启即全丢，不重建会让 `agent/created` 拿到 `Unknown agent preset`）。
+5. **人格注入**：`src/persona.ts` —— `ctx.systemPrompt.section({ name: 'dsh-bot:persona', order: 100 })`，把选中 Bot 的 Name/Title/Description/**Persona** 拼进提示词段；名册为空时输出空文本（渲染层丢弃空段）。
 
 ## P1 已实现（票 #6）
 
@@ -19,7 +19,7 @@
 3. **凭据**（`src/bot-credentials.ts`）：透传 `ctx.credentials` 的 resolve/describe/set/unset/listRecords，**不自建 secrets**；ref 文法校验（POSIX shell 标识符，至多一层 `scope/id`）；set 空值前置拒绝（提示用 unset）。
 4. **审批**（`src/bot-approval.ts`）：包装 `ctx.approval.request` 的 fail-closed 语义——`ApprovalOutcome` 只有 `allowed-once` 算授权，`unavailable`（策略 `ask` 且无 answerer）一律不放行；三档权限预设走 `ctx.permissionPresets`（catalog/current/set，未知档位抛错）。
 5. **例程**（`src/schedules.ts`）：`ctx.schedule.create` 六形态封装（after/at/every/daily/weekly/cron，恰给一种），**必须绑定 root Session**（宿主对子代理 Session 报 `subagent_session`，本插件要求装配方显式传 `rootSessionId`，缺省不挂载并 warn）；pause = 记住请求 + 宿主 delete，resume = 按原请求重建（新 id）。
-6. **P0 接缝收口**：`selectedId` 落 KV（`selection` 表）；`onAgentCreated` 接会话启动人格注入（`agent.inject` 文本，包 try/catch，路径锚 `agent.session?.header?.cwd`）。
+6. **P0 接缝收口**：`selectedId` 落 KV（`selection` 表）；`onAgentCreated` 在会话首个 turn **之前**把 Bot 绑到它的 preset（`agentPresets.select` 只接受未开始回合的会话，`lastTurn > 0` 抛 `agent-preset/locked`；失败只 `warn`，人格的 KV 路径不依赖 preset）。
 
 ### inject 清单（本票的取舍）
 
